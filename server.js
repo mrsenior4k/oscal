@@ -1195,9 +1195,16 @@ app.get("/api/me", (req, res) => {
 
 });
 app.get("/api/creator/:slug", enforceRateLimit("creator-profile", 60_000, 120), (req, res) => {
-  res.json(creatorProfiles[req.params.slug] || null);
-});
+  const slug = req.params.slug;
 
+  const profile =
+    creatorProfiles[slug] ||
+    creatorProfiles["@" + slug] ||
+    creatorProfiles[slug.replace("@", "")] ||
+    null;
+
+  res.json(profile);
+});
 app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
   const creator = req.session.creatorProfile.slug;
   const stats = creatorStats[creator] || {
