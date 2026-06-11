@@ -40,10 +40,16 @@ app.get(["/Support Creator.html", "/Support%20Creator.html"], (req, res) => {
 
 app.use(express.static('public'));
 
+const redirectUri =
+  process.env.GOOGLE_REDIRECT_URI ||
+  "https://oscal.onrender.com/auth/youtube/callback";
+
+console.log("REDIRECT URI:", redirectUri);
+
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI
+  redirectUri
 );
 app.get("/auth/youtube", (req, res) => {
   const url = oauth2Client.generateAuthUrl({
