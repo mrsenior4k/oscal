@@ -376,14 +376,12 @@ img.src = profile.profileImage || "";
 
   publicLink = window.location.origin + "/" + profile.slug;
 
-  const possibleKeys = [
+  const bareSlug = profile.slug?.replace(/^@/, "");
+  const possibleKeys = Array.from(new Set([
     profile.slug,
-    "@" + profile.slug,
-    profile.slug?.replace("@", ""),
-    "@5thdimentionalbeing367",
-    "5thdimentionalbeing367",
-    "5TH DIMENTIONAL BEING"
-  ];
+    bareSlug ? "@" + bareSlug : "",
+    bareSlug
+  ].filter(Boolean)));
 
   let countData = null;
 

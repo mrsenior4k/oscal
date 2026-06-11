@@ -28,14 +28,22 @@ app.use(session({
 
 app.use(bodyParser.json({ limit: "10mb" }));
 
-const DEFAULT_CREATOR = process.env.DEFAULT_CREATOR || "@5thdimentionalbeing367";
+const DEFAULT_CREATOR = process.env.DEFAULT_CREATOR || "";
+
+function redirectHome(req, res) {
+  if (req.session.creatorProfile || !DEFAULT_CREATOR) {
+    return res.redirect("/dashboard");
+  }
+
+  return res.redirect(`/${encodeURIComponent(DEFAULT_CREATOR)}`);
+}
 
 app.get("/", (req, res) => {
-  res.redirect(`/${encodeURIComponent(DEFAULT_CREATOR)}`);
+  redirectHome(req, res);
 });
 
 app.get(["/Support Creator.html", "/Support%20Creator.html"], (req, res) => {
-  res.redirect(`/${encodeURIComponent(DEFAULT_CREATOR)}`);
+  redirectHome(req, res);
 });
 
 app.use(express.static('public'));
@@ -54,7 +62,7 @@ const oauth2Client = new google.auth.OAuth2(
 app.get("/auth/youtube", (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: "offline",
-    redirect_uri: "https://oscal.onrender.com/auth/youtube/callback",
+    redirect_uri: redirectUri,
     scope: ["https://www.googleapis.com/auth/youtube.readonly"],
     prompt: "consent"
   });
@@ -80,19 +88,38 @@ app.get("/auth/youtube/callback", async (req, res) => {
 
   const channel = response.data.items?.[0];
 
+  if (!channel?.snippet) {
+    return res.status(502).send("Could not load your YouTube channel profile. Please try logging in again.");
+  }
+
+  const profileImage =
+    channel.snippet.thumbnails?.high?.url ||
+    channel.snippet.thumbnails?.medium?.url ||
+    channel.snippet.thumbnails?.default?.url ||
+    "";
+
   const creatorProfile = {
     slug: channel.snippet.customUrl || channel.id,
     displayName: channel.snippet.title,
-    profileImage: channel.snippet.thumbnails.default.url
+    profileImage
   };
 
-  creatorProfiles[creatorProfile.slug] = creatorProfile;
-saveData();
-req.session.creatorProfile = creatorProfile;
+  [
+    creatorProfile.slug,
+    creatorProfile.slug?.replace(/^@/, ""),
+    creatorProfile.slug?.startsWith("@") ? creatorProfile.slug : `@${creatorProfile.slug}`,
+    channel.id
+  ]
+    .filter(Boolean)
+    .forEach(key => {
+      creatorProfiles[key] = creatorProfile;
+    });
+  saveData();
+  req.session.creatorProfile = creatorProfile;
 
-req.session.save(() => {
-  res.redirect("/dashboard");
-});
+  req.session.save(() => {
+    res.redirect("/dashboard");
+  });
 });
 
 
@@ -1281,6 +1308,7 @@ const equippedBadge = getEquippedSupporterBadge(anonId, lifetimeSupports);
     equippedBadge
   });
 });
+
 app.get("/:creator", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "viewer.html"));
 });
