@@ -28,14 +28,8 @@ app.use(session({
 
 app.use(bodyParser.json({ limit: "10mb" }));
 
-const DEFAULT_CREATOR = process.env.DEFAULT_CREATOR || "";
-
 function redirectHome(req, res) {
-  if (req.session.creatorProfile || !DEFAULT_CREATOR) {
-    return res.redirect("/dashboard");
-  }
-
-  return res.redirect(`/${encodeURIComponent(DEFAULT_CREATOR)}`);
+  return res.redirect("/dashboard");
 }
 
 app.get("/", (req, res) => {
