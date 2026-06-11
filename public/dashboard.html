@@ -82,6 +82,18 @@
       justify-content: center;
     }
 
+    .btn.secondary {
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.08);
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -242,6 +254,7 @@
     @media (max-width: 850px) {
       .grid, .main { grid-template-columns: 1fr; }
       .top { flex-direction: column; align-items: flex-start; }
+      .actions { width: 100%; justify-content: flex-start; }
     }
   </style>
 </head>
@@ -260,7 +273,14 @@
         </div>
       </div>
 
-      
+      <div class="actions">
+        <a class="btn" id="supportIslandLink" href="/support-island" target="_blank" rel="noopener">
+          Open support island
+        </a>
+        <button class="btn secondary" id="copyIslandLinkBtn" type="button" onclick="copyPublicLink()">
+          Copy island link
+        </button>
+      </div>
     </section>
 
     <section class="grid">
@@ -374,7 +394,8 @@ console.log("PROFILE IMAGE URL:", profile.profileImage);
 
 img.src = profile.profileImage || "";
 
-  publicLink = window.location.origin + "/" + profile.slug;
+  publicLink = window.location.origin + "/" + encodeURIComponent(profile.slug);
+  document.getElementById("supportIslandLink").href = publicLink;
 
   const bareSlug = profile.slug?.replace(/^@/, "");
   const possibleKeys = Array.from(new Set([
@@ -451,6 +472,13 @@ img.src = profile.profileImage || "";
 
     function copyPublicLink() {
       navigator.clipboard.writeText(publicLink);
+      const button = document.getElementById("copyIslandLinkBtn");
+      if (!button) return;
+
+      button.innerText = "Copied";
+      setTimeout(() => {
+        button.innerText = "Copy island link";
+      }, 1200);
     }
     function createTrackedLink() {
   const title = document.getElementById("contentTitle").value.trim();
@@ -475,9 +503,9 @@ img.src = profile.profileImage || "";
     "&title=" +
     encodeURIComponent(title) +
     "&platform=" +
-    encodeURIComponent(platform);
+    encodeURIComponent(platform) +
     "&thumbnail=" +
-    encodeURIComponent(thumbnail)
+    encodeURIComponent(thumbnail);
 
   const box = document.getElementById("trackedLink");
   box.innerText = link;

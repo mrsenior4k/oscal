@@ -1059,6 +1059,10 @@ app.get("/dashboard", requireCreatorLogin, (req, res) => {
   res.sendFile(path.join(__dirname, "public", "dashboard.html"));
 });
 
+app.get("/support-island", requireCreatorLogin, (req, res) => {
+  res.redirect(`/${encodeURIComponent(req.session.creatorProfile.slug)}`);
+});
+
 // ---------- Count endpoint ----------
 app.get('/count/:creator', enforceRateLimit("count", 60_000, 120), (req, res) => {
   const creator = req.params.creator;
