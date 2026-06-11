@@ -274,13 +274,14 @@
       </div>
 
       <div class="actions">
-        <a class="btn" id="supportIslandLink" href="/support-island" target="_blank" rel="noopener">
-          Open support island
-        </a>
-        <button class="btn secondary" id="copyIslandLinkBtn" type="button" onclick="copyPublicLink()">
-          Copy island link
-        </button>
-      </div>
+  <a class="btn" id="supportIslandLink" href="#" target="_blank" rel="noopener">
+    Open support island
+  </a>
+
+  <button class="btn secondary" id="copyIslandLinkBtn" type="button" onclick="copyPublicLink()">
+    Copy island link
+  </button>
+</div>
     </section>
 
     <section class="grid">
@@ -372,6 +373,30 @@ function renderDashboardBadge(badge) {
       >${escapeHtml(badge.short || badge.label || "Badge")}</span>
     </span>
   `;
+}
+
+function getSupportIslandLink() {
+  if (!currentProfile || !currentProfile.slug) {
+    alert("Profile not loaded yet.");
+    return "";
+  }
+
+  return window.location.origin + "/" + encodeURIComponent(currentProfile.slug);
+}
+
+function openSupportIsland() {
+  const link = getSupportIslandLink();
+  if (!link) return;
+
+  window.open(link, "_blank");
+}
+
+function copySupportIslandLink() {
+  const link = getSupportIslandLink();
+  if (!link) return;
+
+  navigator.clipboard.writeText(link);
+  alert("Island link copied.");
 }
 
     async function loadDashboard() {
