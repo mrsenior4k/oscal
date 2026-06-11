@@ -28,14 +28,27 @@ app.use(session({
 
 app.use(bodyParser.json({ limit: "10mb" }));
 
-const DEFAULT_CREATOR = process.env.DEFAULT_CREATOR || "";
-
 function redirectHome(req, res) {
-  if (req.session.creatorProfile || !DEFAULT_CREATOR) {
-    return res.redirect("/dashboard");
-  }
+  return res.redirect("/dashboard");
+}
 
-  return res.redirect(`/${encodeURIComponent(DEFAULT_CREATOR)}`);
+const LEGACY_CREATOR_SLUGS = new Set([
+  "5thdimentionalbeing367",
+  "5thdimensionalbeing367",
+  "5th dimentional being",
+  "5th dimensional being"
+]);
+
+function normalizeCreatorSlug(slug) {
+  return decodeURIComponent(String(slug || ""))
+    .trim()
+    .replace(/^@/, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function isLegacyCreatorSlug(slug) {
+  return LEGACY_CREATOR_SLUGS.has(normalizeCreatorSlug(slug));
 }
 
 app.get("/", (req, res) => {
@@ -1311,7 +1324,12 @@ const equippedBadge = getEquippedSupporterBadge(anonId, lifetimeSupports);
   });
 });
 
+
 app.get("/:creator", (req, res) => {
+  if (isLegacyCreatorSlug(req.params.creator)) {
+    return res.redirect("/dashboard");
+  }
+
   res.sendFile(path.join(__dirname, "public", "viewer.html"));
 });
 
