@@ -28,8 +28,14 @@ app.use(session({
 
 app.use(bodyParser.json({ limit: "10mb" }));
 
+const DEFAULT_CREATOR = process.env.DEFAULT_CREATOR || "";
+
 function redirectHome(req, res) {
-  return res.redirect("/dashboard");
+  if (req.session.creatorProfile || !DEFAULT_CREATOR) {
+    return res.redirect("/dashboard");
+  }
+
+  return res.redirect(`/${encodeURIComponent(DEFAULT_CREATOR)}`);
 }
 
 app.get("/", (req, res) => {
@@ -98,17 +104,18 @@ app.get("/auth/youtube/callback", async (req, res) => {
     profileImage
   };
 
-  [
-    creatorProfile.slug,
-    creatorProfile.slug?.replace(/^@/, ""),
-    creatorProfile.slug?.startsWith("@") ? creatorProfile.slug : `@${creatorProfile.slug}`,
-    channel.id
-  ]
-    .filter(Boolean)
-    .forEach(key => {
-      creatorProfiles[key] = creatorProfile;
-    });
-  saveData();
+ [
+  creatorProfile.slug,
+  creatorProfile.slug?.replace(/^@/, ""),
+  creatorProfile.slug?.startsWith("@") ? creatorProfile.slug : `@${creatorProfile.slug}`,
+  creatorProfile.displayName,
+  channel.id
+]
+  .filter(Boolean)
+  .forEach(key => {
+    creatorProfiles[key] = creatorProfile;
+  });
+saveData();
   req.session.creatorProfile = creatorProfile;
 
   req.session.save(() => {
@@ -1216,12 +1223,13 @@ app.get("/api/me", (req, res) => {
 
 });
 app.get("/api/creator/:slug", enforceRateLimit("creator-profile", 60_000, 120), (req, res) => {
-  const slug = req.params.slug;
+  const slug = decodeURIComponent(req.params.slug || "");
+  const cleanSlug = slug.replace(/^@/, "");
 
   const profile =
     creatorProfiles[slug] ||
-    creatorProfiles["@" + slug] ||
-    creatorProfiles[slug.replace("@", "")] ||
+    creatorProfiles[cleanSlug] ||
+    creatorProfiles[`@${cleanSlug}`] ||
     null;
 
   res.json(profile);
