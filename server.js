@@ -54,6 +54,7 @@ const oauth2Client = new google.auth.OAuth2(
 app.get("/auth/youtube", (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: "offline",
+    redirect_uri: "https://oscal.onrender.com/auth/youtube/callback",
     scope: ["https://www.googleapis.com/auth/youtube.readonly"],
     prompt: "consent"
   });
