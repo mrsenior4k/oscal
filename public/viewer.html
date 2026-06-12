@@ -267,28 +267,6 @@
   font-weight: 800;
 }
 
-.profile-stat-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 14px;
-  padding: 12px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
-}
-
-.profile-stat-row span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.profile-stat-row strong {
-  font-size: 20px;
-  line-height: 1;
-}
-
 .profile-menu-action,
 .profile-secondary-action {
   width: 100%;
@@ -1780,11 +1758,6 @@
           </div>
         </div>
 
-        <div class="profile-stat-row">
-          <span>Total supports</span>
-          <strong id="supporterTotalSupports">0</strong>
-        </div>
-
         <button id="editProfileBtn" class="profile-menu-action" onclick="startSupporterLogin()">
           Edit profile
         </button>
@@ -2399,7 +2372,6 @@ function updateSupporterMenu() {
 
   document.getElementById("supporterMenuName").innerText = displayName;
   document.getElementById("supporterDropdownName").innerText = displayName;
-  document.getElementById("supporterTotalSupports").innerText = supporterLifetimeSupports;
   document.getElementById("supporterDropdownState").innerText =
     usingCreatorIdentity
       ? "Creator identity"
