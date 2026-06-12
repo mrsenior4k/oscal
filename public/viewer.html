@@ -3558,20 +3558,38 @@ function isGreenScreenPixel(r, g, b) {
   );
 }
 
+function isGreenScreenRemovalPixel(r, g, b) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const strongestNonGreen = Math.max(r, b);
+  const greenDelta = g - strongestNonGreen;
+  const saturation = max === 0 ? 0 : (max - min) / max;
+
+  if (g < r || g < b) return false;
+
+  return (
+    (g > 42 && greenDelta > 10 && saturation > 0.16) ||
+    (g > 30 && greenDelta > 14 && saturation > 0.35) ||
+    (g > 78 && greenDelta > 6 && saturation > 0.28)
+  );
+}
+
 function isStickerKeyCandidate(r, g, b, keyMode = "mixed") {
   const max = Math.max(r, g, b);
   const isBlackKey = max < 6;
 
-  if (keyMode === "green") return isGreenScreenPixel(r, g, b);
+  if (keyMode === "green") return isGreenScreenRemovalPixel(r, g, b);
   if (keyMode === "black") return isBlackKey;
 
-  return isBlackKey || isGreenScreenPixel(r, g, b);
+  return isBlackKey || isGreenScreenRemovalPixel(r, g, b);
 }
 
 function detectStickerKeyMode(pixels, width, height) {
   let greenEdges = 0;
   let blackEdges = 0;
   let sampledEdges = 0;
+  let greenFrame = 0;
+  let sampledFrame = 0;
 
   function sample(x, y) {
     const index = (y * width + x) * 4;
@@ -3583,6 +3601,16 @@ function detectStickerKeyMode(pixels, width, height) {
     sampledEdges++;
     if (isGreenScreenPixel(r, g, b)) greenEdges++;
     if (max < 12) blackEdges++;
+  }
+
+  function sampleFrame(x, y) {
+    const index = (y * width + x) * 4;
+    const r = pixels[index];
+    const g = pixels[index + 1];
+    const b = pixels[index + 2];
+
+    sampledFrame++;
+    if (isGreenScreenPixel(r, g, b)) greenFrame++;
   }
 
   const stepX = Math.max(1, Math.floor(width / 40));
@@ -3598,7 +3626,17 @@ function detectStickerKeyMode(pixels, width, height) {
     sample(width - 1, y);
   }
 
+  for (let y = 0; y < height; y += stepY) {
+    for (let x = 0; x < width; x += stepX) {
+      sampleFrame(x, y);
+    }
+  }
+
   if (greenEdges / sampledEdges > 0.35 && greenEdges > blackEdges) {
+    return "green";
+  }
+
+  if (greenFrame / sampledFrame > 0.18) {
     return "green";
   }
 
@@ -3665,20 +3703,69 @@ function removeGreenScreenSpill(pixels, width, height) {
       const strongestNonGreen = Math.max(r, b);
       const greenExcess = g - strongestNonGreen;
       const transparentNear = countTransparentNeighbors(pixels, width, height, x, y, 2);
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const saturation = max === 0 ? 0 : (max - min) / max;
       const isGreenFringe =
-        greenExcess > 8 &&
         transparentNear > 0 &&
-        hasTransparentNeighbor(pixels, width, height, x, y, 2);
+        hasTransparentNeighbor(pixels, width, height, x, y, 2) &&
+        (greenExcess > 6 || saturation > 0.18) &&
+        g >= r &&
+        g >= b;
 
       if (!isGreenFringe) continue;
 
-      if (greenExcess > 18 && transparentNear >= 4) {
+      if (
+        isGreenScreenRemovalPixel(r, g, b) ||
+        (greenExcess > 10 && transparentNear >= 3)
+      ) {
         pixels[dataIndex + 3] = 0;
       } else {
-        pixels[dataIndex + 1] = Math.min(g, strongestNonGreen * 0.96);
+        pixels[dataIndex + 1] = Math.min(g, strongestNonGreen);
       }
     }
   }
+}
+
+function removeGreenScreenBackground(pixels) {
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
+
+    if (isGreenScreenRemovalPixel(r, g, b)) {
+      pixels[i + 3] = 0;
+    }
+  }
+}
+
+function getGreenScreenBounds(pixels, width, height) {
+  const bounds = {
+    minX: width,
+    minY: height,
+    maxX: -1,
+    maxY: -1
+  };
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = (y * width + x) * 4;
+      const r = pixels[index];
+      const g = pixels[index + 1];
+      const b = pixels[index + 2];
+
+      if (!isGreenScreenRemovalPixel(r, g, b)) continue;
+
+      bounds.minX = Math.min(bounds.minX, x);
+      bounds.minY = Math.min(bounds.minY, y);
+      bounds.maxX = Math.max(bounds.maxX, x);
+      bounds.maxY = Math.max(bounds.maxY, y);
+    }
+  }
+
+  return bounds.maxX >= bounds.minX && bounds.maxY >= bounds.minY
+    ? bounds
+    : null;
 }
 
 function hasTransparentNeighbor(pixels, width, height, x, y, radius = 1) {
@@ -3836,7 +3923,7 @@ function createKeyedStickerCanvas(src, className) {
   const video = document.createElement("video");
   video.src = getStickerAssetUrl(src);
   video.muted = true;
-  video.loop = true;
+  video.loop = false;
   video.autoplay = true;
   video.playsInline = true;
   video.preload = "auto";
@@ -3844,12 +3931,46 @@ function createKeyedStickerCanvas(src, className) {
 
   let frameId = 0;
   let isDrawing = false;
+  let stableCrop = null;
+  let stableKeyMode = null;
+  const loopStart = 0.04;
+  const loopEndPadding = 0.18;
+
+  function getStickerLoopEnd() {
+    if (!Number.isFinite(video.duration) || video.duration <= 0.4) {
+      return 0;
+    }
+
+    return Math.max(loopStart + 0.18, video.duration - loopEndPadding);
+  }
+
+  function restartStickerLoop() {
+    const loopEnd = getStickerLoopEnd();
+    if (!loopEnd) return;
+
+    try {
+      video.currentTime = loopStart;
+    } catch (_) {}
+
+    video.play().catch(() => {});
+  }
+
+  function keepStickerLoopContinuous() {
+    const loopEnd = getStickerLoopEnd();
+    if (!loopEnd) return;
+
+    if (video.ended || video.currentTime >= loopEnd) {
+      restartStickerLoop();
+    }
+  }
 
   function drawStickerFrame() {
     if (!video.videoWidth || !video.videoHeight) {
       frameId = requestAnimationFrame(drawStickerFrame);
       return;
     }
+
+    keepStickerLoopContinuous();
 
     const sampleHeight = Math.max(
       1,
@@ -3863,11 +3984,16 @@ function createKeyedStickerCanvas(src, className) {
     const sampleImage = sampleCtx.getImageData(0, 0, sample.width, sample.height);
     const samplePixels = sampleImage.data;
     const keyMode = detectStickerKeyMode(samplePixels, sample.width, sample.height);
+    if (!stableKeyMode || keyMode === "green") stableKeyMode = keyMode;
+    const activeKeyMode =
+      keyMode === "green" || stableKeyMode === "green"
+        ? "green"
+        : stableKeyMode || keyMode;
     const sampleBackground = getEdgeKeyMask(
       samplePixels,
       sample.width,
       sample.height,
-      keyMode
+      activeKeyMode
     );
     let minX = sample.width;
     let minY = sample.height;
@@ -3881,8 +4007,9 @@ function createKeyedStickerCanvas(src, className) {
         const g = samplePixels[index + 1];
         const b = samplePixels[index + 2];
         const max = Math.max(r, g, b);
+        const isGreenKey = activeKeyMode === "green" && isGreenScreenRemovalPixel(r, g, b);
 
-        if (!sampleBackground[y * sample.width + x] && max > 3) {
+        if (!isGreenKey && !sampleBackground[y * sample.width + x] && max > 3) {
           minX = Math.min(minX, x);
           minY = Math.min(minY, y);
           maxX = Math.max(maxX, x);
@@ -3893,10 +4020,40 @@ function createKeyedStickerCanvas(src, className) {
 
     const foundSubject = maxX > minX && maxY > minY;
     const padding = foundSubject ? 10 : 0;
-    const cropMinX = foundSubject ? Math.max(0, minX - padding) : 0;
-    const cropMinY = foundSubject ? Math.max(0, minY - padding) : 0;
-    const cropMaxX = foundSubject ? Math.min(sample.width, maxX + padding) : sample.width;
-    const cropMaxY = foundSubject ? Math.min(sample.height, maxY + padding) : sample.height;
+    let cropMinX = foundSubject ? Math.max(0, minX - padding) : 0;
+    let cropMinY = foundSubject ? Math.max(0, minY - padding) : 0;
+    let cropMaxX = foundSubject ? Math.min(sample.width, maxX + padding) : sample.width;
+    let cropMaxY = foundSubject ? Math.min(sample.height, maxY + padding) : sample.height;
+
+    if (keyMode === "green") {
+      const greenBounds = getGreenScreenBounds(samplePixels, sample.width, sample.height);
+
+      if (greenBounds && !stableCrop) {
+        const greenCropInset = 3;
+        stableCrop = {
+          minX: Math.min(sample.width - 1, greenBounds.minX + greenCropInset),
+          minY: Math.min(sample.height - 1, greenBounds.minY + 1),
+          maxX: Math.max(1, greenBounds.maxX - greenCropInset),
+          maxY: Math.max(1, greenBounds.maxY - 1)
+        };
+      }
+    } else if (foundSubject) {
+      if (!stableCrop) {
+        stableCrop = { minX: cropMinX, minY: cropMinY, maxX: cropMaxX, maxY: cropMaxY };
+      } else {
+        stableCrop.minX = Math.min(stableCrop.minX, cropMinX);
+        stableCrop.minY = Math.min(stableCrop.minY, cropMinY);
+        stableCrop.maxX = Math.max(stableCrop.maxX, cropMaxX);
+        stableCrop.maxY = Math.max(stableCrop.maxY, cropMaxY);
+      }
+    }
+
+    if (stableCrop) {
+      cropMinX = stableCrop.minX;
+      cropMinY = stableCrop.minY;
+      cropMaxX = stableCrop.maxX;
+      cropMaxY = stableCrop.maxY;
+    }
 
     const sourceX = (cropMinX / sample.width) * video.videoWidth;
     const sourceY = (cropMinY / sample.height) * video.videoHeight;
@@ -3914,12 +4071,12 @@ function createKeyedStickerCanvas(src, className) {
 
     const output = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const pixels = output.data;
-    const outputBackground = getEdgeKeyMask(pixels, canvas.width, canvas.height, keyMode);
+    const outputBackground = getEdgeKeyMask(pixels, canvas.width, canvas.height, activeKeyMode);
     const protectedPixels = new Uint8Array(canvas.width * canvas.height);
     const protectRadius = 4;
     const protectRadiusSq = protectRadius * protectRadius;
 
-    if (keyMode !== "green") {
+    if (activeKeyMode !== "green") {
       for (let y = 0; y < canvas.height; y++) {
         for (let x = 0; x < canvas.width; x++) {
           const pixelIndex = y * canvas.width + x;
@@ -3950,16 +4107,26 @@ function createKeyedStickerCanvas(src, className) {
 
     for (let i = 0; i < pixels.length; i += 4) {
       const pixelIndex = i / 4;
+      const isObviousGreenScreen = isGreenScreenPixel(pixels[i], pixels[i + 1], pixels[i + 2]);
+
+      if (
+        isObviousGreenScreen ||
+        (activeKeyMode === "green" && isGreenScreenRemovalPixel(pixels[i], pixels[i + 1], pixels[i + 2]))
+      ) {
+        pixels[i + 3] = 0;
+        continue;
+      }
 
       if (
         outputBackground[pixelIndex] &&
-        (keyMode === "green" || !protectedPixels[pixelIndex])
+        (activeKeyMode === "green" || !protectedPixels[pixelIndex])
       ) {
         pixels[i + 3] = 0;
       }
     }
 
-    if (keyMode === "green") {
+    if (activeKeyMode === "green") {
+      removeGreenScreenBackground(pixels);
       removeGreenScreenSpill(pixels, canvas.width, canvas.height);
     } else {
       removeStickerBlackEdge(pixels, canvas.width, canvas.height);
@@ -3976,9 +4143,16 @@ function createKeyedStickerCanvas(src, className) {
 
   video.addEventListener("play", startStickerDrawing);
   video.addEventListener("loadeddata", () => {
+    if (Number.isFinite(video.duration) && video.duration > 0.4 && video.currentTime < loopStart) {
+      try {
+        video.currentTime = loopStart;
+      } catch (_) {}
+    }
+
     video.play().catch(() => {});
     startStickerDrawing();
   });
+  video.addEventListener("ended", restartStickerLoop);
   video.addEventListener("error", () => {
     canvas.classList.add("hidden");
   });
