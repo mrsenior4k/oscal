@@ -161,6 +161,7 @@
 }
 
 .profile-trigger {
+  position: relative;
   min-height: 46px;
   display: inline-flex;
   align-items: center;
@@ -182,6 +183,104 @@
   white-space: nowrap;
   font-size: 13px;
   font-weight: 900;
+}
+
+.badge-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.supporter-badge {
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 224, 132, 0.34);
+  background: rgba(255, 224, 132, 0.12);
+  color: #ffe8a8;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: 0;
+  white-space: nowrap;
+  box-shadow: 0 0 12px rgba(255, 213, 96, 0.12);
+}
+
+.supporter-badge[data-badge-id="og_wave"] {
+  border-color: rgba(96, 200, 255, 0.42);
+  background: rgba(56, 189, 248, 0.14);
+  color: #bcecff;
+}
+
+.supporter-badge[data-badge-id="first_drop"] {
+  border-color: rgba(93, 236, 174, 0.38);
+  background: rgba(53, 224, 161, 0.12);
+  color: #bcf8df;
+}
+
+.supporter-badge[data-badge-id="wave_starter"] {
+  border-color: rgba(111, 167, 255, 0.4);
+  background: rgba(37, 99, 235, 0.16);
+  color: #c8dcff;
+}
+
+.supporter-badge[data-badge-id="fuel_provider"] {
+  border-color: rgba(255, 201, 90, 0.45);
+  background: rgba(255, 201, 90, 0.14);
+  color: #ffe9ae;
+}
+
+.supporter-badge[data-badge-id="day_one"] {
+  border-color: rgba(255, 126, 202, 0.42);
+  background: rgba(255, 126, 202, 0.12);
+  color: #ffd1ef;
+}
+
+.profile-trigger-badges {
+  max-width: 56px;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+
+.profile-trigger-badges .supporter-badge {
+  height: 16px;
+  padding: 0 5px;
+  font-size: 8px;
+}
+
+.menu-notice {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0;
+  background: linear-gradient(135deg, #ffe7a3, #ffc95a);
+  color: #3a2203;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow:
+    0 0 0 3px rgba(6, 11, 24, 0.95),
+    0 0 16px rgba(255, 201, 90, 0.68);
+  flex-shrink: 0;
+}
+
+.menu-notice.hidden {
+  display: none;
+}
+
+.profile-trigger .menu-notice {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  margin-left: 0;
+  z-index: 2;
 }
 
 .profile-avatar,
@@ -241,8 +340,20 @@
   min-width: 0;
 }
 
+.profile-summary-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.profile-summary-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .profile-summary strong {
-  display: block;
+  display: inline-block;
   font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -259,7 +370,7 @@
   line-height: 1;
 }
 
-.profile-summary div > span {
+.profile-summary-copy > span {
   display: block;
   margin-top: 4px;
   color: var(--muted);
@@ -284,9 +395,19 @@
 }
 
 .profile-menu-action:disabled {
-  cursor: default;
-  opacity: 0.72;
+  cursor: not-allowed;
+  opacity: 0.58;
   background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.72);
+}
+
+.profile-lock-note {
+  min-height: 18px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
 }
 
 .profile-secondary-action {
@@ -298,11 +419,11 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
   margin-top: 14px;
-  padding: 12px 0;
-  border-top: 1px solid rgba(255,255,255,0.1);
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 .profile-stat-row span {
@@ -312,17 +433,96 @@
 }
 
 .profile-stat-row strong {
-  color: white;
-  font-size: 18px;
-  font-weight: 950;
+  font-size: 20px;
+  line-height: 1;
 }
 
 .badge-menu-section {
   margin-top: 14px;
 }
 
+.badge-menu-toggle {
+  width: 100%;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.06);
+  color: white;
+  cursor: pointer;
+  text-align: left;
+}
+
+.badge-menu-toggle:hover {
+  border-color: rgba(125, 211, 252, 0.3);
+  background: rgba(125, 211, 252, 0.08);
+}
+
+.badge-menu-toggle.has-notice {
+  border-color: rgba(255, 201, 90, 0.44);
+  box-shadow: 0 0 22px rgba(255, 201, 90, 0.16);
+}
+
+.badge-menu-toggle-copy {
+  min-width: 0;
+}
+
+.badge-menu-toggle-copy strong,
+.badge-menu-toggle-copy span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge-menu-toggle-copy strong {
+  font-size: 13px;
+  line-height: 1.15;
+}
+
+.badge-menu-toggle-copy span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.badge-menu-toggle-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.badge-menu-chevron {
+  color: rgba(219, 227, 255, 0.78);
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.badge-menu-panel {
+  margin-top: 10px;
+}
+
+.badge-menu-panel.hidden {
+  display: none;
+}
+
+.badge-menu-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
 .badge-menu-title {
-  margin-bottom: 8px;
+  margin: 0;
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
@@ -335,73 +535,196 @@
   gap: 8px;
 }
 
+.badge-collection.hidden {
+  display: none;
+}
+
 .badge-option {
   width: 100%;
-  min-height: 42px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  min-height: 42px;
   padding: 8px 10px;
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 12px;
-  background: rgba(255,255,255,0.06);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.055);
   color: white;
-  text-align: left;
   cursor: pointer;
+  text-align: left;
+}
+
+.badge-option:hover:not(:disabled) {
+  border-color: rgba(255, 224, 132, 0.42);
+  background: rgba(255, 224, 132, 0.08);
 }
 
 .badge-option:disabled {
-  cursor: default;
-  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.badge-option.locked {
+  opacity: 0.55;
+}
+
+.badge-option.selected {
+  border-color: rgba(125, 211, 252, 0.45);
+  background: rgba(125, 211, 252, 0.08);
 }
 
 .badge-option.equipped {
-  border-color: rgba(53,224,161,0.42);
-  background: rgba(53,224,161,0.12);
+  border-color: rgba(53, 224, 161, 0.38);
+  background: rgba(53, 224, 161, 0.08);
 }
 
-.supporter-badge {
-  width: 38px;
-  height: 26px;
-  display: inline-grid;
-  place-items: center;
-  flex-shrink: 0;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #ffe7a3, #38bdf8);
-  color: #07101f;
-  font-size: 11px;
-  font-weight: 950;
-  line-height: 1;
+.badge-option.has-notice {
+  border-color: rgba(255, 201, 90, 0.4);
+  box-shadow: 0 0 18px rgba(255, 201, 90, 0.12);
 }
 
-.badge-option.locked .supporter-badge {
-  background: rgba(255,255,255,0.12);
-  color: rgba(255,255,255,0.62);
-}
-
-.badge-copy {
+.badge-option-copy {
   min-width: 0;
-  flex: 1;
 }
 
-.badge-copy strong,
-.badge-copy span {
+.badge-option-copy strong,
+.badge-option-copy span {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.badge-copy strong {
+.badge-option-copy strong {
   font-size: 12px;
-  font-weight: 950;
+  line-height: 1.1;
 }
 
-.badge-copy span {
-  margin-top: 2px;
+.badge-option-copy span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.badge-option-state {
+  color: #7dd3fc;
+  font-size: 10px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.badge-option-right {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.badge-option-notice {
+  width: 16px;
+  height: 16px;
+  font-size: 12px;
+  box-shadow:
+    0 0 0 2px rgba(6, 11, 24, 0.92),
+    0 0 12px rgba(255, 201, 90, 0.58);
+}
+
+.badge-option.locked .badge-option-state {
+  color: rgba(219, 227, 255, 0.7);
+}
+
+.badge-option.equipped .badge-option-state {
+  color: var(--green);
+}
+
+.badge-detail-card {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.09);
+  background: rgba(255,255,255,0.055);
+}
+
+.badge-detail-card.hidden {
+  display: none;
+}
+
+.badge-detail-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.badge-detail-back {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.07);
+  color: white;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.badge-detail-state {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.badge-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.badge-detail-head strong {
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.badge-detail-description {
+  margin: 9px 0 0;
+  color: #dceaff;
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 800;
+}
+
+.badge-detail-requirement {
+  margin: 6px 0 0;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1.3;
   font-weight: 800;
+}
+
+.badge-detail-action {
+  width: 100%;
+  min-height: 36px;
+  margin-top: 10px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #38bdf8, #2563eb);
+  color: white;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.badge-detail-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.72);
 }
 
   .layout {
@@ -1254,14 +1577,26 @@
   object-fit: cover;
 }
 
-  .feed-text strong {
-    display: block;
-    font-size: 13px;
-  }
+.feed-text strong {
+  display: block;
+  font-size: 13px;
+}
 
-  .feed-text span {
-    display: block;
-    margin-top: 4px;
+.feed-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.feed-name-line strong {
+  display: inline;
+}
+
+.feed-text span {
+  display: block;
+  margin-top: 4px;
     font-size: 12px;
     color: var(--muted);
   }
@@ -1852,6 +2187,8 @@
       <button id="profileMenuButton" class="profile-trigger" onclick="toggleSupporterMenu(event)" aria-haspopup="true" aria-expanded="false" aria-label="Open supporter menu">
         <span class="profile-avatar" id="supporterMenuAvatar">A</span>
         <span class="profile-trigger-name" id="supporterMenuName">Anonymous</span>
+        <span class="badge-strip profile-trigger-badges" id="supporterMenuBadges" aria-label="Supporter badges"></span>
+        <span id="profileMenuNotice" class="menu-notice hidden" aria-label="New badges">0</span>
         <span class="profile-menu-icon" aria-hidden="true">
           <span></span>
           <span></span>
@@ -1862,8 +2199,11 @@
       <div id="supporterMenuDropdown" class="supporter-dropdown hidden">
         <div class="profile-summary">
           <span class="profile-avatar" id="supporterDropdownAvatar">A</span>
-          <div>
-            <strong id="supporterDropdownName">Anonymous</strong>
+          <div class="profile-summary-copy">
+            <div class="profile-summary-name">
+              <strong id="supporterDropdownName">Anonymous</strong>
+              <span class="badge-strip" id="supporterDropdownBadges" aria-label="Supporter badges"></span>
+            </div>
             <span id="supporterDropdownState">Anonymous supporter</span>
           </div>
         </div>
@@ -1874,13 +2214,31 @@
         </div>
 
         <div class="badge-menu-section" id="supporterBadgeSection">
-          <div class="badge-menu-title">Badges</div>
-          <div class="badge-collection" id="supporterBadgeCollection"></div>
+          <button id="badgeMenuToggle" class="badge-menu-toggle" type="button" onclick="openBadgesMenu(event)">
+            <span class="badge-menu-toggle-copy">
+              <strong>Badges</strong>
+              <span id="badgeMenuSummary">View and equip badges</span>
+            </span>
+            <span class="badge-menu-toggle-right">
+              <span id="badgeMenuNotice" class="menu-notice hidden" aria-label="New badges">0</span>
+              <span class="badge-menu-chevron" aria-hidden="true">›</span>
+            </span>
+          </button>
+
+          <div id="badgeMenuPanel" class="badge-menu-panel hidden">
+            <div class="badge-menu-panel-head">
+              <button type="button" class="badge-detail-back" onclick="closeBadgesMenu(event)">Back</button>
+              <p class="badge-menu-title">Badges</p>
+            </div>
+            <div id="supporterBadgeCollection" class="badge-collection"></div>
+            <div id="supporterBadgeDetail" class="badge-detail-card hidden"></div>
+          </div>
         </div>
 
         <button id="editProfileBtn" class="profile-menu-action" onclick="startSupporterLogin()">
           Edit profile
         </button>
+        <p id="editProfileLockNote" class="profile-lock-note"></p>
       </div>
     </div>
   </header>
@@ -2239,11 +2597,57 @@ let creatorPageProfile = null;
 let isCreatorViewingOwnIsland = false;
 let supporterLifetimeSupports = 0;
 let supporterCreatorSupports = 0;
+let creatorTotalSupports = 0;
 let supporterBadgeCollection = [];
 let equippedSupporterBadge = null;
+let selectedSupporterBadgeId = "";
+let badgesMenuOpen = false;
 let removeSupporterPfp = false;
+let selectedSupporterPfpPreview = "";
 let stickerVideos = [];
 let stickerVideosLoaded = false;
+const BADGE_UNREAD_STORAGE_KEY = "unreadSupporterBadgeIds";
+const BADGE_KNOWN_STORAGE_KEY = "knownUnlockedSupporterBadgeIds";
+let unreadBadgeIds = new Set(readStoredIdList(BADGE_UNREAD_STORAGE_KEY));
+let knownUnlockedBadgeIds = new Set(readStoredIdList(BADGE_KNOWN_STORAGE_KEY));
+let badgeNotificationsInitialized = localStorage.getItem(BADGE_KNOWN_STORAGE_KEY) !== null;
+const BADGE_CATALOG = [
+  {
+    id: "og_wave",
+    label: "OG Wave",
+    short: "OG",
+    unlockCondition: "Support during Oscal beta",
+    description: "A supporter during Oscal beta."
+  },
+  {
+    id: "first_drop",
+    label: "First Drop",
+    short: "Drop",
+    unlockCondition: "First successful support",
+    description: "Completed a first successful support."
+  },
+  {
+    id: "wave_starter",
+    label: "Wave Starter",
+    short: "Wave",
+    unlockCondition: "Support 5 creators",
+    description: "Supported 5 different creators."
+  },
+  {
+    id: "fuel_provider",
+    label: "Fuel Provider",
+    short: "Fuel",
+    unlockCondition: "Reach 25 total supports",
+    description: "Reached 25 total supports."
+  },
+  {
+    id: "day_one",
+    label: "Day One",
+    short: "D1",
+    unlockCondition: "Be one of the first 5 supporters of a creator",
+    description: "One of the first 5 supporters of a creator."
+  }
+];
 
 const videoId = params.get("video") || "main";
 const videoTitle = params.get("title") || "Main support page";
@@ -2492,70 +2896,485 @@ function renderProfileAvatar(el, name, pfp) {
   el.innerText = getProfileInitial(name);
 }
 
-function createSupporterBadgeButton(badge) {
-  const isUnlocked = Boolean(badge.unlocked);
-  const isEquipped = equippedSupporterBadge?.id === badge.id;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = `badge-option${isUnlocked ? "" : " locked"}${isEquipped ? " equipped" : ""}`;
-  button.disabled = !isUnlocked;
-  button.title = badge.description || badge.unlockCondition || badge.label || "Supporter badge";
-
-  const icon = document.createElement("span");
-  icon.className = "supporter-badge";
-  icon.innerText = badge.short || badge.label || "Badge";
-
-  const copy = document.createElement("span");
-  copy.className = "badge-copy";
-
-  const label = document.createElement("strong");
-  label.innerText = badge.label || "Supporter badge";
-
-  const state = document.createElement("span");
-  state.innerText = isEquipped
-    ? "Equipped"
-    : isUnlocked ? "Unlocked" : badge.unlockCondition || "Locked";
-
-  copy.append(label, state);
-  button.append(icon, copy);
-
-  if (isUnlocked) {
-    button.addEventListener("click", () => equipSupporterBadge(badge.id));
-  }
-
-  return button;
+function createSupporterBadgeElement(badge) {
+  const el = document.createElement("span");
+  el.className = "supporter-badge";
+  el.dataset.badgeId = badge.id || "";
+  el.innerText = badge.short || badge.label || "Badge";
+  el.title = badge.description
+    ? `${badge.label}: ${badge.description}`
+    : badge.label || "Supporter badge";
+  return el;
 }
 
-function renderSupporterBadges() {
-  const section = document.getElementById("supporterBadgeSection");
-  const collection = document.getElementById("supporterBadgeCollection");
-  if (!section || !collection) return;
+function renderSupporterBadges(container, badges = [], limit = 5) {
+  if (!container) return;
 
-  section.classList.toggle("hidden", usingCreatorIdentity);
-  collection.innerHTML = "";
+  container.innerHTML = "";
 
-  if (usingCreatorIdentity) return;
+  const badgeList = Array.isArray(badges) ? badges : [];
+  const visibleBadges = badgeList.slice(0, limit);
+  visibleBadges.forEach(badge => {
+    container.appendChild(createSupporterBadgeElement(badge));
+  });
 
-  if (!supporterBadgeCollection.length) {
-    const empty = document.createElement("div");
-    empty.className = "badge-option locked";
-    empty.innerHTML = `
-      <span class="supporter-badge">0</span>
-      <span class="badge-copy">
-        <strong>No badges yet</strong>
-        <span>Support once to start unlocking badges</span>
-      </span>
-    `;
-    collection.appendChild(empty);
+  if (badgeList.length > visibleBadges.length) {
+    const overflow = document.createElement("span");
+    overflow.className = "supporter-badge";
+    overflow.innerText = `+${badgeList.length - visibleBadges.length}`;
+    overflow.title = "More supporter badges";
+    container.appendChild(overflow);
+  }
+}
+
+function readStoredIdList(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value.filter(Boolean) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveStoredIdSet(key, values) {
+  localStorage.setItem(key, JSON.stringify([...values].filter(Boolean)));
+}
+
+function getUnlockedBadgeIds(badges = supporterBadgeCollection) {
+  return (Array.isArray(badges) ? badges : [])
+    .filter(badge => badge?.id && badge.unlocked)
+    .map(badge => badge.id);
+}
+
+function persistBadgeNotificationState() {
+  saveStoredIdSet(BADGE_UNREAD_STORAGE_KEY, unreadBadgeIds);
+  saveStoredIdSet(BADGE_KNOWN_STORAGE_KEY, knownUnlockedBadgeIds);
+}
+
+function setNoticeBadge(el, count, visible) {
+  if (!el) return;
+
+  el.innerText = "!";
+  el.setAttribute(
+    "aria-label",
+    count === 1 ? "1 new badge" : `${count} new badges`
+  );
+  el.classList.toggle("hidden", !visible);
+}
+
+function updateBadgeNotificationUI() {
+  const unreadCount = usingCreatorIdentity ? 0 : unreadBadgeIds.size;
+  const dropdown = document.getElementById("supporterMenuDropdown");
+  const badgeToggle = document.getElementById("badgeMenuToggle");
+  const profileMenuOpen = dropdown && !dropdown.classList.contains("hidden");
+
+  setNoticeBadge(
+    document.getElementById("profileMenuNotice"),
+    unreadCount,
+    unreadCount > 0
+  );
+
+  setNoticeBadge(
+    document.getElementById("badgeMenuNotice"),
+    unreadCount,
+    unreadCount > 0 && profileMenuOpen && !badgesMenuOpen
+  );
+
+  if (badgeToggle) {
+    badgeToggle.classList.toggle(
+      "has-notice",
+      unreadCount > 0 && profileMenuOpen && !badgesMenuOpen
+    );
+  }
+}
+
+function trackBadgeUnlockNotifications(nextBadges, notify = false, previousUnlockedIds = null) {
+  const unlockedIds = getUnlockedBadgeIds(nextBadges);
+  const previousUnlockedSet = previousUnlockedIds
+    ? new Set(previousUnlockedIds)
+    : null;
+
+  if (!badgeNotificationsInitialized) {
+    knownUnlockedBadgeIds = new Set(unlockedIds);
+    if (notify) {
+      unlockedIds.forEach(id => unreadBadgeIds.add(id));
+    }
+    badgeNotificationsInitialized = true;
+    persistBadgeNotificationState();
+    updateBadgeNotificationUI();
     return;
   }
 
-  supporterBadgeCollection.forEach(badge => {
-    collection.appendChild(createSupporterBadgeButton(badge));
+  const newlyUnlocked = unlockedIds.filter(id => (
+    !knownUnlockedBadgeIds.has(id) ||
+    (notify && previousUnlockedSet && !previousUnlockedSet.has(id))
+  ));
+
+  newlyUnlocked.forEach(id => {
+    knownUnlockedBadgeIds.add(id);
+    if (notify) unreadBadgeIds.add(id);
+  });
+
+  persistBadgeNotificationState();
+  updateBadgeNotificationUI();
+}
+
+function markBadgeNotificationSeen(badgeId) {
+  if (!badgeId || !unreadBadgeIds.has(badgeId)) return;
+
+  unreadBadgeIds.delete(badgeId);
+  persistBadgeNotificationState();
+  updateBadgeNotificationUI();
+}
+
+function isLocallyUnlockedBadge(badgeId) {
+  if (badgeId === "og_wave" || badgeId === "first_drop") {
+    return supporterLifetimeSupports >= 1;
+  }
+
+  if (badgeId === "fuel_provider") {
+    return supporterLifetimeSupports >= 25;
+  }
+
+  if (badgeId === "day_one") {
+    return supporterCreatorSupports >= 1 && creatorTotalSupports > 0 && creatorTotalSupports <= 5;
+  }
+
+  return false;
+}
+
+function normalizeBadgeCollection(badges = []) {
+  const badgeList = Array.isArray(badges) ? badges : [];
+  const serverBadges = new Map(badgeList.map(badge => [badge.id, badge]));
+
+  return BADGE_CATALOG.map(baseBadge => {
+    const serverBadge = serverBadges.get(baseBadge.id) || {};
+    const hasServerUnlockedState = typeof serverBadge.unlocked === "boolean";
+
+    return {
+      ...baseBadge,
+      ...serverBadge,
+      unlocked: hasServerUnlockedState
+        ? serverBadge.unlocked || isLocallyUnlockedBadge(baseBadge.id)
+        : Boolean(serverBadge.id) || isLocallyUnlockedBadge(baseBadge.id)
+    };
   });
 }
 
+function normalizeEquippedBadge(badge) {
+  if (!badge) {
+    try {
+      badge = JSON.parse(localStorage.getItem("equippedSupporterBadge") || "null");
+    } catch (_) {
+      badge = null;
+    }
+  }
+
+  if (!badge?.id) return null;
+
+  const matchingBadge = supporterBadgeCollection.find(item => item.id === badge.id);
+  return matchingBadge?.unlocked ? matchingBadge : null;
+}
+
+function setSupporterBadgeState(badges, equippedBadge, options = {}) {
+  const previousUnlockedIds = getUnlockedBadgeIds();
+  const nextBadges = normalizeBadgeCollection(badges);
+  trackBadgeUnlockNotifications(
+    nextBadges,
+    Boolean(options.notifyUnlocks),
+    previousUnlockedIds
+  );
+  supporterBadgeCollection = nextBadges;
+  equippedSupporterBadge = normalizeEquippedBadge(equippedBadge);
+}
+
+function renderEquippedSupporterBadge(container, badge) {
+  renderSupporterBadges(container, badge ? [badge] : [], 1);
+}
+
+function getSelectedSupporterBadge() {
+  return supporterBadgeCollection.find(badge => badge.id === selectedSupporterBadgeId) || null;
+}
+
+function closeSupporterBadgeDetail(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  selectedSupporterBadgeId = "";
+  renderBadgesMenu();
+}
+
+function selectSupporterBadge(badgeId, event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  selectedSupporterBadgeId = badgeId;
+  markBadgeNotificationSeen(badgeId);
+  renderBadgesMenu();
+}
+
+function openBadgesMenu(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  badgesMenuOpen = true;
+  selectedSupporterBadgeId = "";
+  renderBadgesMenu();
+}
+
+function closeBadgesMenu(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  badgesMenuOpen = false;
+  selectedSupporterBadgeId = "";
+  renderBadgesMenu();
+}
+
+function renderBadgesMenu() {
+  const section = document.getElementById("supporterBadgeSection");
+  const panel = document.getElementById("badgeMenuPanel");
+  const toggle = document.getElementById("badgeMenuToggle");
+  const summary = document.getElementById("badgeMenuSummary");
+
+  if (section) {
+    section.classList.toggle("hidden", usingCreatorIdentity);
+  }
+
+  if (usingCreatorIdentity) {
+    badgesMenuOpen = false;
+    selectedSupporterBadgeId = "";
+  }
+
+  const totalBadges = supporterBadgeCollection.length || BADGE_CATALOG.length;
+  const unlockedBadges = getUnlockedBadgeIds().length;
+
+  if (summary) {
+    summary.innerText = `${unlockedBadges}/${totalBadges} unlocked`;
+  }
+
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", String(badgesMenuOpen));
+  }
+
+  if (panel) {
+    panel.classList.toggle("hidden", !badgesMenuOpen);
+  }
+
+  if (badgesMenuOpen) {
+    renderBadgeCollection();
+  } else {
+    const collection = document.getElementById("supporterBadgeCollection");
+    const detail = document.getElementById("supporterBadgeDetail");
+
+    if (collection) collection.classList.remove("hidden");
+    if (detail) {
+      detail.innerHTML = "";
+      detail.classList.add("hidden");
+    }
+  }
+
+  updateBadgeNotificationUI();
+}
+
+function renderBadgeDetail() {
+  const detail = document.getElementById("supporterBadgeDetail");
+  if (!detail) return;
+
+  const badge = getSelectedSupporterBadge();
+
+  detail.innerHTML = "";
+  detail.classList.toggle("hidden", !badge);
+
+  if (!badge) return;
+
+  const isEquipped = equippedSupporterBadge?.id === badge.id;
+
+  const top = document.createElement("div");
+  top.className = "badge-detail-top";
+
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "badge-detail-back";
+  back.innerText = "Back";
+  back.addEventListener("click", closeSupporterBadgeDetail);
+
+  const state = document.createElement("span");
+  state.className = "badge-detail-state";
+  state.innerText = badge.unlocked
+    ? isEquipped ? "Equipped" : "Unlocked"
+    : "Locked";
+
+  top.appendChild(back);
+  top.appendChild(state);
+
+  const head = document.createElement("div");
+  head.className = "badge-detail-head";
+  head.appendChild(createSupporterBadgeElement(badge));
+
+  const title = document.createElement("strong");
+  title.innerText = badge.label;
+  head.appendChild(title);
+
+  const description = document.createElement("p");
+  description.className = "badge-detail-description";
+  description.innerText = badge.description || badge.unlockCondition || "Supporter badge.";
+
+  const requirement = document.createElement("p");
+  requirement.className = "badge-detail-requirement";
+  requirement.innerText = badge.unlocked
+    ? "Unlocked"
+    : `Locked: ${badge.unlockCondition || "Requirement not met yet."}`;
+
+  const action = document.createElement("button");
+  action.type = "button";
+  action.className = "badge-detail-action";
+  action.disabled = !badge.unlocked || isEquipped;
+  action.innerText = badge.unlocked
+    ? isEquipped ? "Equipped" : "Equip badge"
+    : "Locked";
+
+  if (badge.unlocked && !isEquipped) {
+    action.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      equipSupporterBadge(badge.id);
+    });
+  }
+
+  detail.appendChild(top);
+  detail.appendChild(head);
+  detail.appendChild(description);
+  detail.appendChild(requirement);
+  detail.appendChild(action);
+}
+
+function renderBadgeCollection() {
+  const collection = document.getElementById("supporterBadgeCollection");
+  if (!collection) return;
+
+  collection.innerHTML = "";
+
+  const badges = Array.isArray(supporterBadgeCollection)
+    ? supporterBadgeCollection
+    : [];
+
+  if (!badges.length) {
+    const empty = document.createElement("p");
+    empty.className = "profile-lock-note";
+    empty.innerText = "Support to unlock badges.";
+    collection.appendChild(empty);
+    renderBadgeDetail();
+    return;
+  }
+
+  if (
+    selectedSupporterBadgeId &&
+    !badges.some(badge => badge.id === selectedSupporterBadgeId)
+  ) {
+    selectedSupporterBadgeId = "";
+  }
+
+  collection.classList.toggle("hidden", Boolean(selectedSupporterBadgeId));
+
+  badges.forEach(badge => {
+    const isEquipped = equippedSupporterBadge?.id === badge.id;
+    const isSelected = selectedSupporterBadgeId === badge.id;
+    const hasNotice = unreadBadgeIds.has(badge.id);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = [
+      "badge-option",
+      badge.unlocked ? "" : "locked",
+      isSelected ? "selected" : "",
+      isEquipped ? "equipped" : "",
+      hasNotice ? "has-notice" : ""
+    ].filter(Boolean).join(" ");
+    button.title = badge.unlocked
+      ? `${badge.label}: ${badge.description}`
+      : `${badge.label}: ${badge.unlockCondition || badge.description}`;
+
+    const badgePill = createSupporterBadgeElement(badge);
+
+    const copy = document.createElement("span");
+    copy.className = "badge-option-copy";
+
+    const label = document.createElement("strong");
+    label.innerText = badge.label;
+
+    const meta = document.createElement("span");
+    meta.innerText = badge.unlocked
+      ? badge.description
+      : badge.unlockCondition || "Locked";
+
+    copy.appendChild(label);
+    copy.appendChild(meta);
+
+    const state = document.createElement("span");
+    state.className = "badge-option-state";
+    state.innerText = badge.unlocked
+      ? isEquipped ? "Equipped" : "View"
+      : "Locked";
+
+    const right = document.createElement("span");
+    right.className = "badge-option-right";
+
+    if (hasNotice) {
+      const notice = document.createElement("span");
+      notice.className = "menu-notice badge-option-notice";
+      notice.innerText = "!";
+      notice.setAttribute("aria-label", "New badge");
+      right.appendChild(notice);
+    }
+
+    right.appendChild(state);
+
+    button.appendChild(badgePill);
+    button.appendChild(copy);
+    button.appendChild(right);
+
+    button.addEventListener("click", event => selectSupporterBadge(badge.id, event));
+
+    collection.appendChild(button);
+  });
+
+  renderBadgeDetail();
+}
+
+function applyEquippedSupporterBadge(badge) {
+  equippedSupporterBadge = badge?.id ? badge : null;
+
+  if (equippedSupporterBadge) {
+    localStorage.setItem("equippedSupporterBadge", JSON.stringify(equippedSupporterBadge));
+  } else {
+    localStorage.removeItem("equippedSupporterBadge");
+  }
+
+  updateSupporterMenu();
+  loadCount();
+}
+
 async function equipSupporterBadge(badgeId) {
+  const localBadge = supporterBadgeCollection.find(
+    badge => badge.id === badgeId && badge.unlocked
+  );
+
+  if (!localBadge) {
+    setStatus("Badge is still locked.", "warning");
+    return;
+  }
+
+  applyEquippedSupporterBadge(localBadge);
+  setStatus(`${localBadge.label} equipped.`, "success");
+
   try {
     const res = await fetch("/support/badge", {
       method: "POST",
@@ -2566,36 +3385,56 @@ async function equipSupporterBadge(badgeId) {
     const data = await res.json();
 
     if (!data.success) {
-      setStatus(data.message || "Could not update badge.", "warning");
+      console.warn("Badge equipped locally but server did not sync:", data.message);
       return;
     }
 
-    supporterBadgeCollection = Array.isArray(data.badges) ? data.badges : [];
-    equippedSupporterBadge = data.equippedBadge || null;
-    renderSupporterBadges();
+    setSupporterBadgeState(data.badges, data.equippedBadge);
+    applyEquippedSupporterBadge(normalizeEquippedBadge(data.equippedBadge) || localBadge);
   } catch (err) {
-    console.error("Failed to update supporter badge", err);
-    setStatus("Could not update badge.", "warning");
+    console.error("Failed to equip badge", err);
   }
 }
 
 function updateSupporterMenu() {
   const displayName = getCurrentSupporterName();
   const displayPfp = getCurrentSupporterPfp();
+  const canEditProfile = !usingCreatorIdentity && supporterLifetimeSupports >= 3;
+  const supportsUntilUnlock = Math.max(0, 3 - supporterLifetimeSupports);
+  const editProfileBtn = document.getElementById("editProfileBtn");
+  const lockNote = document.getElementById("editProfileLockNote");
 
   document.getElementById("supporterMenuName").innerText = displayName;
   document.getElementById("supporterDropdownName").innerText = displayName;
+  document.getElementById("supporterTotalSupports").innerText = supporterLifetimeSupports;
   document.getElementById("supporterDropdownState").innerText =
     usingCreatorIdentity
       ? "Creator identity"
       : serverHasSupporterProfile ? "Saved supporter" : "Anonymous supporter";
 
-  const editProfileBtn = document.getElementById("editProfileBtn");
+  renderEquippedSupporterBadge(
+    document.getElementById("supporterMenuBadges"),
+    usingCreatorIdentity ? null : equippedSupporterBadge
+  );
+
+  renderEquippedSupporterBadge(
+    document.getElementById("supporterDropdownBadges"),
+    usingCreatorIdentity ? null : equippedSupporterBadge
+  );
+
+  renderBadgesMenu();
+
   if (editProfileBtn) {
     editProfileBtn.innerText = usingCreatorIdentity
       ? "Using creator profile"
-      : "Edit profile";
-    editProfileBtn.disabled = usingCreatorIdentity;
+      : canEditProfile ? "Edit profile" : "Profile locked";
+    editProfileBtn.disabled = usingCreatorIdentity || !canEditProfile;
+  }
+
+  if (lockNote) {
+    lockNote.innerText = usingCreatorIdentity || canEditProfile
+      ? ""
+      : `${supportsUntilUnlock} more support${supportsUntilUnlock === 1 ? "" : "s"} to unlock`;
   }
 
   renderProfileAvatar(
@@ -2615,12 +3454,10 @@ function updateSupporterMenu() {
     statsRow.classList.toggle("hidden", usingCreatorIdentity);
   }
 
-  const totalSupports = document.getElementById("supporterTotalSupports");
-  if (totalSupports) {
-    totalSupports.innerText = supporterLifetimeSupports;
+  const badgeSection = document.getElementById("supporterBadgeSection");
+  if (badgeSection) {
+    badgeSection.classList.toggle("hidden", usingCreatorIdentity);
   }
-
-  renderSupporterBadges();
 }
 
 function updateSupporterPreview() {
@@ -2628,8 +3465,9 @@ function updateSupporterPreview() {
   const cleanName = normalizeSupporterName(rawName);
   const previewName = cleanName || getAnonymousName();
   const previewPfp =
-    !removeSupporterPfp && serverHasSupporterProfile
-      ? supporterProfile?.pfp || ""
+    !removeSupporterPfp
+      ? selectedSupporterPfpPreview ||
+        (serverHasSupporterProfile ? supporterProfile?.pfp || "" : "")
       : "";
 
   renderProfileAvatar(
@@ -3112,7 +3950,8 @@ function addSupportToFeed(
   emoji = "",
   pfp = "",
   reactionType = "emoji",
-  stickerUrl = ""
+  stickerUrl = "",
+  equippedBadge = null
 ) {
   const feed = document.getElementById("liveFeed");
   if (!feed) return;
@@ -3134,13 +3973,22 @@ function addSupportToFeed(
   const text = document.createElement("div");
   text.className = "feed-text";
 
+  const nameLine = document.createElement("div");
+  nameLine.className = "feed-name-line";
+
   const strong = document.createElement("strong");
   strong.innerText = `${name} wished`;
+
+  const badgeStrip = document.createElement("span");
+  badgeStrip.className = "badge-strip";
+  renderEquippedSupporterBadge(badgeStrip, equippedBadge);
 
   const message = document.createElement("span");
   renderSupportReaction(message, emoji, reactionType, stickerUrl);
 
-  text.appendChild(strong);
+  nameLine.appendChild(strong);
+  nameLine.appendChild(badgeStrip);
+  text.appendChild(nameLine);
   text.appendChild(message);
   left.appendChild(avatar);
   left.appendChild(text);
@@ -3306,20 +4154,31 @@ function toggleSupporterMenu(event) {
   const button = document.getElementById("profileMenuButton");
   const willOpen = dropdown.classList.contains("hidden");
 
+  if (willOpen) {
+    selectedSupporterBadgeId = "";
+    badgesMenuOpen = false;
+  }
+
   dropdown.classList.toggle("hidden", !willOpen);
   button.setAttribute("aria-expanded", String(willOpen));
+  renderBadgesMenu();
 }
 
 function closeSupporterMenu() {
   const dropdown = document.getElementById("supporterMenuDropdown");
   const button = document.getElementById("profileMenuButton");
 
+  badgesMenuOpen = false;
+  selectedSupporterBadgeId = "";
+
   if (dropdown) dropdown.classList.add("hidden");
   if (button) button.setAttribute("aria-expanded", "false");
+  renderBadgesMenu();
 }
 
 function clearSupporterPicture() {
   removeSupporterPfp = true;
+  selectedSupporterPfpPreview = "";
   document.getElementById("supporterPfpInput").value = "";
   updateSupporterPreview();
 }
@@ -3340,6 +4199,7 @@ function previewSupporterPicture() {
   const reader = new FileReader();
 
   reader.onload = function(e) {
+    selectedSupporterPfpPreview = e.target.result;
     renderProfileAvatar(
       document.getElementById("supporterProfilePreview"),
       name,
@@ -3410,10 +4270,9 @@ async function saveSupporterProfile() {
 
     supporterProfile = data.profile || nextProfile;
     serverHasSupporterProfile = true;
-    supporterBadgeCollection = Array.isArray(data.badges)
-      ? data.badges
-      : supporterBadgeCollection;
-    equippedSupporterBadge = data.equippedBadge || equippedSupporterBadge;
+    setSupporterBadgeState(data.badges, data.equippedBadge);
+    selectedSupporterPfpPreview = "";
+    removeSupporterPfp = false;
 
     localStorage.setItem(
       "supporterProfile",
@@ -3494,8 +4353,7 @@ body: JSON.stringify({
   serverHasSupporterProfile = usingCreatorIdentity || Boolean(data.hasProfile);
   supporterLifetimeSupports = Number(data.lifetimeSupports || 0);
   supporterCreatorSupports = Number(data.creatorSupports || 0);
-  supporterBadgeCollection = Array.isArray(data.badges) ? data.badges : [];
-  equippedSupporterBadge = data.equippedBadge || null;
+  setSupporterBadgeState(data.badges, data.equippedBadge);
 
   if (usingCreatorIdentity) {
     supporterProfile = creatorIdentity;
@@ -3561,17 +4419,19 @@ body: JSON.stringify({
       supporterCreatorSupports = Number(
         completeData.creatorSupports || supporterCreatorSupports + 1
       );
-      supporterBadgeCollection = Array.isArray(completeData.badges)
-        ? completeData.badges
-        : supporterBadgeCollection;
-      equippedSupporterBadge = completeData.equippedBadge || equippedSupporterBadge;
+      setSupporterBadgeState(completeData.badges, completeData.equippedBadge, {
+        notifyUnlocks: true
+      });
       updateSupporterMenu();
 
       addSupportToFeed(
         getCurrentSupporterName(),
         Date.now(),
         "",
-        getCurrentSupporterPfp()
+        getCurrentSupporterPfp(),
+        "emoji",
+        "",
+        equippedSupporterBadge
       );
 
       showReactionPicker(supporterCreatorSupports);
@@ -3761,6 +4621,7 @@ body: JSON.stringify({
     const data = await res.json();
 
     const supports = data.supports || 0;
+    creatorTotalSupports = Number(supports || 0);
     const earnings = supports * 0.05;
 
     updateStatCards(supports, earnings);
@@ -3777,7 +4638,8 @@ body: JSON.stringify({
           item.emoji,
           item.pfp,
           item.reactionType,
-          item.stickerUrl
+          item.stickerUrl,
+          item.equippedBadge
         );
       });
     }
