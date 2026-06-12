@@ -39,16 +39,99 @@ const LEGACY_CREATOR_SLUGS = new Set([
   "5th dimensional being"
 ]);
 
+const FALLBACK_CREATOR_PROFILE = {
+  slug: process.env.FALLBACK_CREATOR_SLUG || "@5thdimentionalbeing367",
+  displayName: process.env.FALLBACK_CREATOR_DISPLAY_NAME || "JSGwithaDream",
+  profileImage:
+    process.env.FALLBACK_CREATOR_PROFILE_IMAGE ||
+    "https://yt3.ggpht.com/jFouBAMmfj9lzDkqUiM9MsTMx-riqEwWPbFnyAlyMA65nMrU4x8u_JtlP34iWzGx3exZV94q5g=s88-c-k-c0x00ffffff-no-rj"
+};
+
+function safeDecode(value) {
+  try {
+    return decodeURIComponent(String(value || ""));
+  } catch (_) {
+    return String(value || "");
+  }
+}
+
 function normalizeCreatorSlug(slug) {
-  return decodeURIComponent(String(slug || ""))
+  return safeDecode(slug)
     .trim()
     .replace(/^@/, "")
     .replace(/\s+/g, " ")
     .toLowerCase();
 }
 
+function compactCreatorSlug(slug) {
+  return normalizeCreatorSlug(slug).replace(/[^a-z0-9]/g, "");
+}
+
 function isLegacyCreatorSlug(slug) {
   return LEGACY_CREATOR_SLUGS.has(normalizeCreatorSlug(slug));
+}
+
+function getCreatorLookupKeys(...values) {
+  const keys = new Set();
+
+  values.filter(Boolean).forEach(value => {
+    const raw = safeDecode(value).trim();
+    if (!raw) return;
+
+    const bare = raw.replace(/^@/, "");
+    const normalized = normalizeCreatorSlug(raw);
+    const compact = compactCreatorSlug(raw);
+
+    [raw, bare, bare ? `@${bare}` : "", normalized, compact, compact ? `@${compact}` : ""]
+      .filter(Boolean)
+      .forEach(key => keys.add(key));
+  });
+
+  return [...keys];
+}
+
+function storeCreatorProfile(profile, channelId = "") {
+  getCreatorLookupKeys(
+    profile.slug,
+    profile.displayName,
+    channelId
+  ).forEach(key => {
+    creatorProfiles[key] = profile;
+  });
+}
+
+function profileMatchesSlug(profile, slug) {
+  if (!profile) return false;
+
+  const requested = new Set(getCreatorLookupKeys(slug));
+  return getCreatorLookupKeys(profile.slug, profile.displayName).some(key =>
+    requested.has(key)
+  );
+}
+
+function findCreatorProfile(slug, req = null) {
+  const keys = getCreatorLookupKeys(slug);
+
+  for (const key of keys) {
+    if (creatorProfiles[key]) return creatorProfiles[key];
+  }
+
+  for (const profile of Object.values(creatorProfiles)) {
+    if (profileMatchesSlug(profile, slug)) return profile;
+  }
+
+  if (
+    req?.session?.creatorProfile &&
+    (profileMatchesSlug(req.session.creatorProfile, slug) || isLegacyCreatorSlug(slug))
+  ) {
+    return req.session.creatorProfile;
+  }
+
+  if (profileMatchesSlug(FALLBACK_CREATOR_PROFILE, slug) || isLegacyCreatorSlug(slug)) {
+    return FALLBACK_CREATOR_PROFILE;
+  }
+
+  return null;
 }
 
 app.get("/", (req, res) => {
@@ -117,17 +200,7 @@ app.get("/auth/youtube/callback", async (req, res) => {
     profileImage
   };
 
- [
-  creatorProfile.slug,
-  creatorProfile.slug?.replace(/^@/, ""),
-  creatorProfile.slug?.startsWith("@") ? creatorProfile.slug : `@${creatorProfile.slug}`,
-  creatorProfile.displayName,
-  channel.id
-]
-  .filter(Boolean)
-  .forEach(key => {
-    creatorProfiles[key] = creatorProfile;
-  });
+  storeCreatorProfile(creatorProfile, channel.id);
 saveData();
   req.session.creatorProfile = creatorProfile;
 
@@ -1240,16 +1313,7 @@ app.get("/api/me", (req, res) => {
 
 });
 app.get("/api/creator/:slug", enforceRateLimit("creator-profile", 60_000, 120), (req, res) => {
-  const slug = decodeURIComponent(req.params.slug || "");
-  const cleanSlug = slug.replace(/^@/, "");
-
-  const profile =
-    creatorProfiles[slug] ||
-    creatorProfiles[cleanSlug] ||
-    creatorProfiles[`@${cleanSlug}`] ||
-    null;
-
-  res.json(profile);
+  res.json(findCreatorProfile(req.params.slug, req));
 });
 app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
   const creator = req.session.creatorProfile.slug;
@@ -1329,6 +1393,16 @@ const equippedBadge = getEquippedSupporterBadge(anonId, lifetimeSupports);
 });
 
 app.get("/island/:creator", (req, res) => {
+  const profile = findCreatorProfile(req.params.creator, req);
+
+  if (
+    profile?.slug &&
+    isLegacyCreatorSlug(req.params.creator) &&
+    normalizeCreatorSlug(profile.slug) !== normalizeCreatorSlug(req.params.creator)
+  ) {
+    return res.redirect(`/island/${encodeURIComponent(profile.slug)}`);
+  }
+
   res.sendFile(path.join(__dirname, "public", "viewer.html"));
 });
 
