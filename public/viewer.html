@@ -2102,6 +2102,7 @@ const rawCreator =
 const creator = decodeURIComponent(rawCreator || "Alex").trim();
     console.log("CURRENT CREATOR:", creator);
     const params = new URLSearchParams(window.location.search);
+    const forceSupporterView = params.get("view") === "supporter";
     let anonId = localStorage.getItem("anonId");
 
 if (!anonId) {
@@ -2271,6 +2272,7 @@ function getCreatorIdentityKeys(profile) {
 }
 
 function loggedInCreatorOwnsIsland() {
+  if (forceSupporterView) return false;
   if (!loggedInCreatorProfile) return false;
 
   const islandKeys = new Set([
@@ -2320,6 +2322,8 @@ function getCreatorSupporterProfile(profile) {
 }
 
 async function getLoggedInCreatorIdentity() {
+  if (forceSupporterView) return null;
+
   try {
     const res = await fetch("/api/me");
     if (!res.ok) return null;

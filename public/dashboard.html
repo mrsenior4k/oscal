@@ -381,7 +381,12 @@ function getSupportIslandLink() {
     return "";
   }
 
-  return window.location.origin + "/island/" + encodeURIComponent(currentProfile.slug);
+  return (
+    window.location.origin +
+    "/island/" +
+    encodeURIComponent(currentProfile.slug) +
+    "?view=supporter"
+  );
 }
 
 function openSupportIsland() {
@@ -419,7 +424,7 @@ console.log("PROFILE IMAGE URL:", profile.profileImage);
 
 img.src = profile.profileImage || "";
 
-  publicLink = window.location.origin + "/island/" + encodeURIComponent(profile.slug);
+  publicLink = getSupportIslandLink();
   document.getElementById("supportIslandLink").href = publicLink;
 
   const bareSlug = profile.slug?.replace(/^@/, "");
@@ -525,6 +530,7 @@ img.src = profile.profileImage || "";
     encodeURIComponent(currentProfile.slug) +
     "?video=" +
     encodeURIComponent(videoId) +
+    "&view=supporter" +
     "&title=" +
     encodeURIComponent(title) +
     "&platform=" +
