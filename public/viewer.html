@@ -3989,43 +3989,13 @@ function createKeyedStickerCanvas(src, className) {
       keyMode === "green" || stableKeyMode === "green"
         ? "green"
         : stableKeyMode || keyMode;
-    const sampleBackground = getEdgeKeyMask(
-      samplePixels,
-      sample.width,
-      sample.height,
-      activeKeyMode
-    );
-    let minX = sample.width;
-    let minY = sample.height;
-    let maxX = 0;
-    let maxY = 0;
 
-    for (let y = 0; y < sample.height; y++) {
-      for (let x = 0; x < sample.width; x++) {
-        const index = (y * sample.width + x) * 4;
-        const r = samplePixels[index];
-        const g = samplePixels[index + 1];
-        const b = samplePixels[index + 2];
-        const max = Math.max(r, g, b);
-        const isGreenKey = activeKeyMode === "green" && isGreenScreenRemovalPixel(r, g, b);
+    let cropMinX = 0;
+    let cropMinY = 0;
+    let cropMaxX = sample.width;
+    let cropMaxY = sample.height;
 
-        if (!isGreenKey && !sampleBackground[y * sample.width + x] && max > 3) {
-          minX = Math.min(minX, x);
-          minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x);
-          maxY = Math.max(maxY, y);
-        }
-      }
-    }
-
-    const foundSubject = maxX > minX && maxY > minY;
-    const padding = foundSubject ? 10 : 0;
-    let cropMinX = foundSubject ? Math.max(0, minX - padding) : 0;
-    let cropMinY = foundSubject ? Math.max(0, minY - padding) : 0;
-    let cropMaxX = foundSubject ? Math.min(sample.width, maxX + padding) : sample.width;
-    let cropMaxY = foundSubject ? Math.min(sample.height, maxY + padding) : sample.height;
-
-    if (keyMode === "green") {
+    if (activeKeyMode === "green") {
       const greenBounds = getGreenScreenBounds(samplePixels, sample.width, sample.height);
 
       if (greenBounds && !stableCrop) {
@@ -4037,22 +4007,13 @@ function createKeyedStickerCanvas(src, className) {
           maxY: Math.max(1, greenBounds.maxY - 1)
         };
       }
-    } else if (foundSubject) {
-      if (!stableCrop) {
-        stableCrop = { minX: cropMinX, minY: cropMinY, maxX: cropMaxX, maxY: cropMaxY };
-      } else {
-        stableCrop.minX = Math.min(stableCrop.minX, cropMinX);
-        stableCrop.minY = Math.min(stableCrop.minY, cropMinY);
-        stableCrop.maxX = Math.max(stableCrop.maxX, cropMaxX);
-        stableCrop.maxY = Math.max(stableCrop.maxY, cropMaxY);
-      }
-    }
 
-    if (stableCrop) {
-      cropMinX = stableCrop.minX;
-      cropMinY = stableCrop.minY;
-      cropMaxX = stableCrop.maxX;
-      cropMaxY = stableCrop.maxY;
+      if (stableCrop) {
+        cropMinX = stableCrop.minX;
+        cropMinY = stableCrop.minY;
+        cropMaxX = stableCrop.maxX;
+        cropMaxY = stableCrop.maxY;
+      }
     }
 
     const sourceX = (cropMinX / sample.width) * video.videoWidth;
