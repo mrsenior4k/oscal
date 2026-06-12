@@ -109,6 +109,18 @@ function profileMatchesSlug(profile, slug) {
   );
 }
 
+function profilesReferToSameCreator(firstProfile, secondProfile) {
+  if (!firstProfile || !secondProfile) return false;
+
+  const firstKeys = new Set(
+    getCreatorLookupKeys(firstProfile.slug, firstProfile.displayName)
+  );
+
+  return getCreatorLookupKeys(secondProfile.slug, secondProfile.displayName).some(key =>
+    firstKeys.has(key)
+  );
+}
+
 function findCreatorProfile(slug, req = null) {
   const keys = getCreatorLookupKeys(slug);
 
@@ -122,7 +134,7 @@ function findCreatorProfile(slug, req = null) {
 
   if (
     req?.session?.creatorProfile &&
-    (profileMatchesSlug(req.session.creatorProfile, slug) || isLegacyCreatorSlug(slug))
+    profileMatchesSlug(req.session.creatorProfile, slug)
   ) {
     return req.session.creatorProfile;
   }
@@ -132,6 +144,18 @@ function findCreatorProfile(slug, req = null) {
   }
 
   return null;
+}
+
+function isLoggedInCreatorForSlug(req, slug) {
+  const sessionProfile = req.session?.creatorProfile;
+  if (!sessionProfile) return false;
+
+  const targetProfile = findCreatorProfile(slug);
+
+  return (
+    profileMatchesSlug(sessionProfile, slug) ||
+    profilesReferToSameCreator(sessionProfile, targetProfile)
+  );
 }
 
 app.get("/", (req, res) => {
@@ -913,6 +937,13 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
 
   if (!type || !creator || !fingerprint || !timeZone) {
     return res.json({ success: false, message: 'Missing data' });
+  }
+
+  if (isLoggedInCreatorForSlug(req, creator)) {
+    return res.json({
+      success: false,
+      message: "You cannot support your own island."
+    });
   }
 
   const typeLimit = checkRateLimit(

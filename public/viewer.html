@@ -1852,12 +1852,12 @@
         </div>
 
         <div class="mission-controls">
-          <div class="reward-strip">
+          <div class="reward-strip" id="rewardStrip">
             <div class="reward-pill">15-second watch</div>
             <div class="reward-pill">Instant support</div>
           </div>
 
-          <button id="watchBtn" class="main-action" onclick="startAd()">
+          <button id="watchBtn" class="main-action" onclick="handleMainAction()">
             <span>Watch sponsor to support</span>
           </button>
 
@@ -2140,6 +2140,9 @@ let supporterProfile = JSON.parse(
 );
 let serverHasSupporterProfile = false;
 let usingCreatorIdentity = false;
+let loggedInCreatorProfile = null;
+let creatorPageProfile = null;
+let isCreatorViewingOwnIsland = false;
 let supporterLifetimeSupports = 0;
 let supporterCreatorSupports = 0;
 let removeSupporterPfp = false;
@@ -2177,11 +2180,15 @@ loadContentCard();
   const profile = await res.json();
 
   if (!profile) {
+    creatorPageProfile = null;
+    updateCreatorOwnerMode();
     document.getElementById("headlineName").innerText = creator;
     document.getElementById("avatar").innerText = creator.charAt(0).toUpperCase();
     return;
   }
 
+  creatorPageProfile = profile;
+  updateCreatorOwnerMode();
   document.getElementById("headlineName").innerText = profile.displayName;
 
   const avatar = document.getElementById("avatar");
@@ -2272,6 +2279,64 @@ function getAnonymousName() {
   return `Anonymous #${anonId}`;
 }
 
+function normalizeCreatorIdentityKey(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^@/, "")
+    .replace(/[^A-Za-z0-9]/g, "")
+    .toLowerCase();
+}
+
+function getCreatorIdentityKeys(profile) {
+  return [
+    profile?.slug,
+    profile?.displayName,
+    profile?.name
+  ]
+    .map(normalizeCreatorIdentityKey)
+    .filter(Boolean);
+}
+
+function loggedInCreatorOwnsIsland() {
+  if (!loggedInCreatorProfile) return false;
+
+  const islandKeys = new Set([
+    normalizeCreatorIdentityKey(creator),
+    ...getCreatorIdentityKeys(creatorPageProfile)
+  ].filter(Boolean));
+
+  return getCreatorIdentityKeys(loggedInCreatorProfile).some(key =>
+    islandKeys.has(key)
+  );
+}
+
+function updateCreatorOwnerMode() {
+  isCreatorViewingOwnIsland = loggedInCreatorOwnsIsland();
+
+  const watchBtn = document.getElementById("watchBtn");
+  const watchBtnLabel = watchBtn?.querySelector("span");
+  const rewardStrip = document.getElementById("rewardStrip");
+
+  if (watchBtnLabel) {
+    watchBtnLabel.innerText = isCreatorViewingOwnIsland
+      ? "Back to dashboard"
+      : "Watch sponsor to support";
+  }
+
+  if (rewardStrip) {
+    rewardStrip.classList.toggle("hidden", isCreatorViewingOwnIsland);
+  }
+}
+
+function handleMainAction() {
+  if (isCreatorViewingOwnIsland) {
+    window.location.href = "/dashboard";
+    return;
+  }
+
+  startAd();
+}
+
 function getCreatorSupporterProfile(profile) {
   if (!profile) return null;
 
@@ -2287,6 +2352,8 @@ async function getLoggedInCreatorIdentity() {
     if (!res.ok) return null;
 
     const profile = await res.json();
+    loggedInCreatorProfile = profile || null;
+    updateCreatorOwnerMode();
     return getCreatorSupporterProfile(profile);
   } catch (err) {
     console.warn("Could not load logged-in creator identity", err);
@@ -3514,6 +3581,11 @@ body: JSON.stringify({
 }
 
     async function startAd() {
+  if (isCreatorViewingOwnIsland) {
+    window.location.href = "/dashboard";
+    return;
+  }
+
   const now = Date.now();
 
   if (now < cooldownUntil) {
