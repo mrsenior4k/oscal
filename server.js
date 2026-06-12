@@ -1230,7 +1230,7 @@ app.get('/count/:creator', enforceRateLimit("count", 60_000, 120), (req, res) =>
   });
 });
 
-app.post("/support/profile", enforceRateLimit("support-profile", 60 * 60 * 1000, 10), (req, res) => {
+app.post("/support/profile", enforceRateLimit("support-profile-v2", 60 * 60 * 1000, 60), (req, res) => {
   const { anonId, name, pfp } = req.body;
   const cleanName = normalizeSupporterName(name);
   const nameError = validateSupporterName(cleanName);

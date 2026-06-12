@@ -4486,7 +4486,9 @@ async function saveSupporterProfile() {
     const data = await res.json();
 
     if (!data.success) {
-      errorEl.innerText = data.message || "Could not save identity.";
+      errorEl.innerText = data.wait
+        ? `${data.message || "Too many attempts."} Try again in ${formatTime(Number(data.wait) || 0)}.`
+        : data.message || "Could not save identity.";
       return;
     }
 
