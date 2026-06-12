@@ -12,6 +12,7 @@ const { DatabaseSync } = require("node:sqlite");
 
 
 const app = express();
+const SERVER_STARTED_AT = Date.now();
 
 let events = []; // simple in-memory log (replace with DB in production)
 let userProgress = {};
@@ -237,6 +238,16 @@ saveData();
 
 // ---------- Data storage ----------
 
+const RENDER_DISK_DEFAULT_DIR = "/var/data";
+
+function getDefaultDataDir() {
+  if (fs.existsSync(RENDER_DISK_DEFAULT_DIR)) {
+    return RENDER_DISK_DEFAULT_DIR;
+  }
+
+  return path.join(__dirname, "data");
+}
+
 function resolveSqlitePath() {
   const configuredPath = process.env.SQLITE_PATH || process.env.SQLITE_DB_PATH;
 
@@ -244,14 +255,17 @@ function resolveSqlitePath() {
     return path.resolve(configuredPath);
   }
 
-  const configuredDir = process.env.DATA_DIR || path.join(__dirname, "data");
+  const configuredDir = process.env.DATA_DIR || getDefaultDataDir();
   return path.join(path.resolve(configuredDir), "app.sqlite");
 }
 
 const DB_PATH = resolveSqlitePath();
 const DATA_DIR = path.dirname(DB_PATH);
 const hasConfiguredPersistentStore = Boolean(
-  process.env.DATA_DIR || process.env.SQLITE_PATH || process.env.SQLITE_DB_PATH
+  process.env.DATA_DIR ||
+  process.env.SQLITE_PATH ||
+  process.env.SQLITE_DB_PATH ||
+  DATA_DIR === RENDER_DISK_DEFAULT_DIR
 );
 
 if (process.env.NODE_ENV === "production" && !hasConfiguredPersistentStore) {
@@ -1355,6 +1369,40 @@ app.post("/dev/reset", requireDevAccess, enforceRateLimit("dev-reset", 60_000, 3
   res.json({
     success: true,
     message: "Dev data reset."
+  });
+});
+
+app.get("/api/storage/status", requireDevAccess, (req, res) => {
+  let dbFile = null;
+
+  try {
+    const stats = fs.statSync(DB_PATH);
+    dbFile = {
+      exists: true,
+      bytes: stats.size,
+      modifiedAt: stats.mtime.toISOString()
+    };
+  } catch (_) {
+    dbFile = { exists: false };
+  }
+
+  const totalSupports = Object.values(creatorStats).reduce(
+    (sum, stats) => sum + Number(stats?.supports || 0),
+    0
+  );
+
+  res.json({
+    success: true,
+    startedAt: new Date(SERVER_STARTED_AT).toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+    nodeEnv: process.env.NODE_ENV || "development",
+    dataDir: DATA_DIR,
+    dbPath: DB_PATH,
+    hasConfiguredPersistentStore,
+    usingRenderDiskDefault: DATA_DIR === RENDER_DISK_DEFAULT_DIR,
+    dbFile,
+    creatorCount: Object.keys(creatorStats).length,
+    totalSupports
   });
 });
 
