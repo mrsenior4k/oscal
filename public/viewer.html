@@ -305,6 +305,12 @@
   background: linear-gradient(135deg, #38bdf8, #2563eb);
 }
 
+.profile-menu-action:disabled {
+  cursor: default;
+  opacity: 0.72;
+  background: rgba(255,255,255,0.1);
+}
+
 .profile-secondary-action {
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.1);
@@ -1779,7 +1785,7 @@
           <strong id="supporterTotalSupports">0</strong>
         </div>
 
-        <button class="profile-menu-action" onclick="startSupporterLogin()">
+        <button id="editProfileBtn" class="profile-menu-action" onclick="startSupporterLogin()">
           Edit profile
         </button>
       </div>
@@ -2133,6 +2139,7 @@ let supporterProfile = JSON.parse(
   localStorage.getItem("supporterProfile") || "null"
 );
 let serverHasSupporterProfile = false;
+let usingCreatorIdentity = false;
 let supporterLifetimeSupports = 0;
 let supporterCreatorSupports = 0;
 let removeSupporterPfp = false;
@@ -2265,6 +2272,28 @@ function getAnonymousName() {
   return `Anonymous #${anonId}`;
 }
 
+function getCreatorSupporterProfile(profile) {
+  if (!profile) return null;
+
+  return {
+    name: profile.displayName || profile.slug || "",
+    pfp: profile.profileImage || ""
+  };
+}
+
+async function getLoggedInCreatorIdentity() {
+  try {
+    const res = await fetch("/api/me");
+    if (!res.ok) return null;
+
+    const profile = await res.json();
+    return getCreatorSupporterProfile(profile);
+  } catch (err) {
+    console.warn("Could not load logged-in creator identity", err);
+    return null;
+  }
+}
+
 function getCurrentSupporterName() {
   if (serverHasSupporterProfile && supporterProfile?.name) {
     return supporterProfile.name;
@@ -2305,7 +2334,17 @@ function updateSupporterMenu() {
   document.getElementById("supporterDropdownName").innerText = displayName;
   document.getElementById("supporterTotalSupports").innerText = supporterLifetimeSupports;
   document.getElementById("supporterDropdownState").innerText =
-    serverHasSupporterProfile ? "Saved supporter" : "Anonymous supporter";
+    usingCreatorIdentity
+      ? "Creator identity"
+      : serverHasSupporterProfile ? "Saved supporter" : "Anonymous supporter";
+
+  const editProfileBtn = document.getElementById("editProfileBtn");
+  if (editProfileBtn) {
+    editProfileBtn.innerText = usingCreatorIdentity
+      ? "Using creator profile"
+      : "Edit profile";
+    editProfileBtn.disabled = usingCreatorIdentity;
+  }
 
   renderProfileAvatar(
     document.getElementById("supporterMenuAvatar"),
@@ -3062,6 +3101,11 @@ function readSelectedProfileImage(file) {
 }
 
 async function saveSupporterProfile() {
+  if (usingCreatorIdentity) {
+    closeSupporterLogin();
+    return;
+  }
+
   const name = normalizeSupporterName(
     document.getElementById("supporterNameInput").value
   );
@@ -3176,11 +3220,16 @@ body: JSON.stringify({
   });
 
   const data = await res.json();
-  serverHasSupporterProfile = Boolean(data.hasProfile);
+  const creatorIdentity = await getLoggedInCreatorIdentity();
+
+  usingCreatorIdentity = Boolean(creatorIdentity?.name || creatorIdentity?.pfp);
+  serverHasSupporterProfile = usingCreatorIdentity || Boolean(data.hasProfile);
   supporterLifetimeSupports = Number(data.lifetimeSupports || 0);
   supporterCreatorSupports = Number(data.creatorSupports || 0);
 
-  if (serverHasSupporterProfile) {
+  if (usingCreatorIdentity) {
+    supporterProfile = creatorIdentity;
+  } else if (serverHasSupporterProfile) {
     supporterProfile = data.profile || { name: "", pfp: "" };
     localStorage.setItem(
       "supporterProfile",
