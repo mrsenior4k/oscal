@@ -294,6 +294,116 @@
   border: 1px solid rgba(255,255,255,0.1);
 }
 
+.profile-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.profile-stat-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profile-stat-row strong {
+  color: white;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.badge-menu-section {
+  margin-top: 14px;
+}
+
+.badge-menu-title {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.badge-collection {
+  display: grid;
+  gap: 8px;
+}
+
+.badge-option {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.06);
+  color: white;
+  text-align: left;
+  cursor: pointer;
+}
+
+.badge-option:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.badge-option.equipped {
+  border-color: rgba(53,224,161,0.42);
+  background: rgba(53,224,161,0.12);
+}
+
+.supporter-badge {
+  width: 38px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ffe7a3, #38bdf8);
+  color: #07101f;
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.badge-option.locked .supporter-badge {
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.62);
+}
+
+.badge-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.badge-copy strong,
+.badge-copy span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge-copy strong {
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.badge-copy span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
   .layout {
     flex: 1;
     display: grid;
@@ -1758,6 +1868,16 @@
           </div>
         </div>
 
+        <div class="profile-stat-row" id="supporterStatsRow">
+          <span>Total supports</span>
+          <strong id="supporterTotalSupports">0</strong>
+        </div>
+
+        <div class="badge-menu-section" id="supporterBadgeSection">
+          <div class="badge-menu-title">Badges</div>
+          <div class="badge-collection" id="supporterBadgeCollection"></div>
+        </div>
+
         <button id="editProfileBtn" class="profile-menu-action" onclick="startSupporterLogin()">
           Edit profile
         </button>
@@ -2119,6 +2239,8 @@ let creatorPageProfile = null;
 let isCreatorViewingOwnIsland = false;
 let supporterLifetimeSupports = 0;
 let supporterCreatorSupports = 0;
+let supporterBadgeCollection = [];
+let equippedSupporterBadge = null;
 let removeSupporterPfp = false;
 let stickerVideos = [];
 let stickerVideosLoaded = false;
@@ -2370,6 +2492,93 @@ function renderProfileAvatar(el, name, pfp) {
   el.innerText = getProfileInitial(name);
 }
 
+function createSupporterBadgeButton(badge) {
+  const isUnlocked = Boolean(badge.unlocked);
+  const isEquipped = equippedSupporterBadge?.id === badge.id;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `badge-option${isUnlocked ? "" : " locked"}${isEquipped ? " equipped" : ""}`;
+  button.disabled = !isUnlocked;
+  button.title = badge.description || badge.unlockCondition || badge.label || "Supporter badge";
+
+  const icon = document.createElement("span");
+  icon.className = "supporter-badge";
+  icon.innerText = badge.short || badge.label || "Badge";
+
+  const copy = document.createElement("span");
+  copy.className = "badge-copy";
+
+  const label = document.createElement("strong");
+  label.innerText = badge.label || "Supporter badge";
+
+  const state = document.createElement("span");
+  state.innerText = isEquipped
+    ? "Equipped"
+    : isUnlocked ? "Unlocked" : badge.unlockCondition || "Locked";
+
+  copy.append(label, state);
+  button.append(icon, copy);
+
+  if (isUnlocked) {
+    button.addEventListener("click", () => equipSupporterBadge(badge.id));
+  }
+
+  return button;
+}
+
+function renderSupporterBadges() {
+  const section = document.getElementById("supporterBadgeSection");
+  const collection = document.getElementById("supporterBadgeCollection");
+  if (!section || !collection) return;
+
+  section.classList.toggle("hidden", usingCreatorIdentity);
+  collection.innerHTML = "";
+
+  if (usingCreatorIdentity) return;
+
+  if (!supporterBadgeCollection.length) {
+    const empty = document.createElement("div");
+    empty.className = "badge-option locked";
+    empty.innerHTML = `
+      <span class="supporter-badge">0</span>
+      <span class="badge-copy">
+        <strong>No badges yet</strong>
+        <span>Support once to start unlocking badges</span>
+      </span>
+    `;
+    collection.appendChild(empty);
+    return;
+  }
+
+  supporterBadgeCollection.forEach(badge => {
+    collection.appendChild(createSupporterBadgeButton(badge));
+  });
+}
+
+async function equipSupporterBadge(badgeId) {
+  try {
+    const res = await fetch("/support/badge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anonId, badgeId })
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+      setStatus(data.message || "Could not update badge.", "warning");
+      return;
+    }
+
+    supporterBadgeCollection = Array.isArray(data.badges) ? data.badges : [];
+    equippedSupporterBadge = data.equippedBadge || null;
+    renderSupporterBadges();
+  } catch (err) {
+    console.error("Failed to update supporter badge", err);
+    setStatus("Could not update badge.", "warning");
+  }
+}
+
 function updateSupporterMenu() {
   const displayName = getCurrentSupporterName();
   const displayPfp = getCurrentSupporterPfp();
@@ -2400,6 +2609,18 @@ function updateSupporterMenu() {
     displayName,
     displayPfp
   );
+
+  const statsRow = document.getElementById("supporterStatsRow");
+  if (statsRow) {
+    statsRow.classList.toggle("hidden", usingCreatorIdentity);
+  }
+
+  const totalSupports = document.getElementById("supporterTotalSupports");
+  if (totalSupports) {
+    totalSupports.innerText = supporterLifetimeSupports;
+  }
+
+  renderSupporterBadges();
 }
 
 function updateSupporterPreview() {
@@ -3189,6 +3410,10 @@ async function saveSupporterProfile() {
 
     supporterProfile = data.profile || nextProfile;
     serverHasSupporterProfile = true;
+    supporterBadgeCollection = Array.isArray(data.badges)
+      ? data.badges
+      : supporterBadgeCollection;
+    equippedSupporterBadge = data.equippedBadge || equippedSupporterBadge;
 
     localStorage.setItem(
       "supporterProfile",
@@ -3269,6 +3494,8 @@ body: JSON.stringify({
   serverHasSupporterProfile = usingCreatorIdentity || Boolean(data.hasProfile);
   supporterLifetimeSupports = Number(data.lifetimeSupports || 0);
   supporterCreatorSupports = Number(data.creatorSupports || 0);
+  supporterBadgeCollection = Array.isArray(data.badges) ? data.badges : [];
+  equippedSupporterBadge = data.equippedBadge || null;
 
   if (usingCreatorIdentity) {
     supporterProfile = creatorIdentity;
@@ -3334,6 +3561,10 @@ body: JSON.stringify({
       supporterCreatorSupports = Number(
         completeData.creatorSupports || supporterCreatorSupports + 1
       );
+      supporterBadgeCollection = Array.isArray(completeData.badges)
+        ? completeData.badges
+        : supporterBadgeCollection;
+      equippedSupporterBadge = completeData.equippedBadge || equippedSupporterBadge;
       updateSupporterMenu();
 
       addSupportToFeed(
