@@ -237,8 +237,28 @@ saveData();
 
 // ---------- Data storage ----------
 
-const DATA_DIR = path.join(__dirname, "data");
-const DB_PATH = path.join(DATA_DIR, "app.sqlite");
+function resolveSqlitePath() {
+  const configuredPath = process.env.SQLITE_PATH || process.env.SQLITE_DB_PATH;
+
+  if (configuredPath) {
+    return path.resolve(configuredPath);
+  }
+
+  const configuredDir = process.env.DATA_DIR || path.join(__dirname, "data");
+  return path.join(path.resolve(configuredDir), "app.sqlite");
+}
+
+const DB_PATH = resolveSqlitePath();
+const DATA_DIR = path.dirname(DB_PATH);
+const hasConfiguredPersistentStore = Boolean(
+  process.env.DATA_DIR || process.env.SQLITE_PATH || process.env.SQLITE_DB_PATH
+);
+
+if (process.env.NODE_ENV === "production" && !hasConfiguredPersistentStore) {
+  console.warn(
+    `SQLite data is using ${DB_PATH}. Set DATA_DIR to a Render Disk mount path so supports survive restarts.`
+  );
+}
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
