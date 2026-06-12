@@ -1060,7 +1060,7 @@ app.get("/dashboard", requireCreatorLogin, (req, res) => {
 });
 
 app.get("/support-island", requireCreatorLogin, (req, res) => {
-  res.redirect(`/${encodeURIComponent(req.session.creatorProfile.slug)}`);
+  res.redirect(`/island/${encodeURIComponent(req.session.creatorProfile.slug)}`);
 });
 
 // ---------- Count endpoint ----------
@@ -1326,6 +1326,10 @@ const equippedBadge = getEquippedSupporterBadge(anonId, lifetimeSupports);
     badges,
     equippedBadge
   });
+});
+
+app.get("/island/:creator", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "viewer.html"));
 });
 
 
