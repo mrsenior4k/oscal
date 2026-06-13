@@ -440,8 +440,6 @@ function copySupportIslandLink() {
   );
   const profile = await meRes.json();
 
-  console.log("LOGGED IN PROFILE:", profile);
-
   currentProfile = profile;
 
   if (!profile) {
@@ -451,8 +449,6 @@ function copySupportIslandLink() {
 
   document.getElementById("creatorName").innerText = profile.displayName;
  const img = document.getElementById("creatorImage");
-
-console.log("PROFILE IMAGE URL:", profile.profileImage);
 
 img.src = profile.profileImage || "";
 

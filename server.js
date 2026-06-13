@@ -1,5 +1,4 @@
 require("dotenv").config();
-console.log("REDIRECT URI:", process.env.GOOGLE_REDIRECT_URI);
 // server.js
 const { google } = require("googleapis");
 const express = require('express');
@@ -13,6 +12,18 @@ const { DatabaseSync } = require("node:sqlite");
 
 const app = express();
 const SERVER_STARTED_AT = Date.now();
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const SESSION_SECRET =
+  process.env.SESSION_SECRET ||
+  (IS_PRODUCTION ? crypto.randomBytes(48).toString("hex") : "dev-session-secret");
+
+if (IS_PRODUCTION && !process.env.SESSION_SECRET) {
+  console.warn("SESSION_SECRET is not set. Sessions will rotate on every restart.");
+}
+
+function debugLog(...args) {
+  if (!IS_PRODUCTION) console.log(...args);
+}
 
 let events = []; // simple in-memory log (replace with DB in production)
 let userProgress = {};
@@ -23,7 +34,7 @@ let creatorProfiles = {};
 let creatorOwnerDevices = {};
 
 app.use(session({
-  secret: "change-this-secret-later",
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false
 }));
@@ -294,7 +305,7 @@ const redirectUri =
   process.env.GOOGLE_REDIRECT_URI ||
   "https://oscal.onrender.com/auth/youtube/callback";
 
-console.log("REDIRECT URI:", redirectUri);
+debugLog("REDIRECT URI:", redirectUri);
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -661,6 +672,17 @@ function requireDevAccess(req, res, next) {
     success: false,
     message: "Dev reset is locked."
   });
+}
+
+function requireDevResetAccess(req, res, next) {
+  if (IS_PRODUCTION && process.env.ENABLE_DEV_RESET !== "true") {
+    return res.status(403).json({
+      success: false,
+      message: "Dev reset is disabled."
+    });
+  }
+
+  return requireDevAccess(req, res, next);
 }
 
 function getToday(timeZone) {
@@ -1284,7 +1306,7 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
   platform = "unknown"
 } = req.body;
 
-console.log("EVENT RECEIVED:", {
+debugLog("EVENT RECEIVED:", {
   type,
   creator,
   anonId,
@@ -1541,7 +1563,7 @@ app.get('/count/:creator', enforceRateLimit("count", 60_000, 120), (req, res) =>
     recentSupports: []
   };
 
-  console.log("COUNT REQUEST:", {
+  debugLog("COUNT REQUEST:", {
   creator,
   creatorKey,
   availableCreators: Object.keys(creatorStats)
@@ -1691,7 +1713,7 @@ app.post("/support/emoji", enforceRateLimit("support-reaction", 60_000, 30), (re
   res.json({ success: true, item: attachSupporterBadges(item) });
 });
 
-app.post("/dev/reset", requireDevAccess, enforceRateLimit("dev-reset", 60_000, 3), (req, res) => {
+app.post("/dev/reset", requireDevResetAccess, enforceRateLimit("dev-reset", 60_000, 3), (req, res) => {
   userProgress = {};
   creatorStats = {};
   events = [];

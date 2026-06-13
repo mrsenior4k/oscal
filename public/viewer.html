@@ -2695,7 +2695,6 @@ const rawCreator =
   pathParts[0] === "island" ? pathParts[1] : pathParts[0];
 
 const creator = decodeURIComponent(rawCreator || "Alex").trim();
-    console.log("CURRENT CREATOR:", creator);
     const params = new URLSearchParams(window.location.search);
     const forceSupporterView = params.get("view") === "supporter";
     let anonId = localStorage.getItem("anonId");
@@ -4737,9 +4736,6 @@ body: JSON.stringify({
 
     async function readJsonResponse(response, label) {
       const rawText = await response.text();
-
-      console.log(`${label} STATUS:`, response.status);
-      console.log(`${label} RAW RESPONSE:`, rawText);
 
       try {
         return JSON.parse(rawText);
