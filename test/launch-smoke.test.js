@@ -65,8 +65,9 @@ test("privacy and terms pages are routed and linked", () => {
   assert.match(dashboard, /href="\/terms"/);
   assert.match(privacy, /Privacy Policy/);
   assert.match(privacy, /Device and browser signals/);
-  assert.match(privacy, /TikTok/);
+  assert.match(privacy, /TikTok Ad Links/);
   assert.match(terms, /Terms of Use/);
   assert.match(terms, /Fair Use/);
+  assert.match(terms, /Ad Videos and Third-Party Links/);
   assert.match(terms, /Estimated earnings are not a guarantee/);
 });
