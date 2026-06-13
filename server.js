@@ -299,6 +299,14 @@ app.get(["/Support Creator.html", "/Support%20Creator.html"], (req, res) => {
   redirectHome(req, res);
 });
 
+app.get("/privacy", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "privacy.html"));
+});
+
+app.get("/terms", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "terms.html"));
+});
+
 app.use(express.static('public'));
 
 const redirectUri =

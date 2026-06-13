@@ -6,6 +6,8 @@ const server = fs.readFileSync("server.js", "utf8");
 const viewer = fs.readFileSync("public/viewer.html", "utf8");
 const dashboard = fs.readFileSync("public/dashboard.html", "utf8");
 const renderConfig = fs.readFileSync("render.yaml", "utf8");
+const privacy = fs.readFileSync("public/privacy.html", "utf8");
+const terms = fs.readFileSync("public/terms.html", "utf8");
 
 test("production sessions use an environment secret", () => {
   assert.match(server, /process\.env\.SESSION_SECRET/);
@@ -52,4 +54,19 @@ test("sponsor ads have file-specific tracking links", () => {
   assert.match(server, /"53b751172cd670e0d39bcaaabf7c2df4\.mp4":\s*"https:\/\/www\.tiktok\.com\/t\/ZP9jBP6NX9JAM-0yiKG\/"/);
   assert.match(server, /"2f94ebea9be3d6a5fec118b6d6b307e0\.mp4":\s*"https:\/\/www\.tiktok\.com\/t\/ZP9jBmBcaw8pS-Yr9uz\/"/);
   assert.match(server, /clickUrl:\s*SPONSOR_AD_CLICK_URLS\[file\]\s*\|\|\s*DEFAULT_SPONSOR_CLICK_URL/);
+});
+
+test("privacy and terms pages are routed and linked", () => {
+  assert.match(server, /app\.get\("\/privacy"/);
+  assert.match(server, /app\.get\("\/terms"/);
+  assert.match(viewer, /href="\/privacy"/);
+  assert.match(viewer, /href="\/terms"/);
+  assert.match(dashboard, /href="\/privacy"/);
+  assert.match(dashboard, /href="\/terms"/);
+  assert.match(privacy, /Privacy Policy/);
+  assert.match(privacy, /Device and browser signals/);
+  assert.match(privacy, /TikTok/);
+  assert.match(terms, /Terms of Use/);
+  assert.match(terms, /Fair Use/);
+  assert.match(terms, /Estimated earnings are not a guarantee/);
 });

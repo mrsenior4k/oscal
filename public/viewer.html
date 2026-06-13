@@ -105,6 +105,27 @@
   padding: 0 16px 16px;
 }
 
+.legal-links {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.legal-links a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.legal-links a:hover {
+  color: #f8faff;
+  text-decoration: underline;
+}
+
   .topbar {
   display: flex;
   justify-content: space-between;
@@ -2528,6 +2549,11 @@
   
 </aside>
 </div>
+
+<nav class="legal-links" aria-label="Legal links">
+  <a href="/privacy">Privacy</a>
+  <a href="/terms">Terms</a>
+</nav>
 </div>
           
   <div id="adOverlay" class="ad-overlay hidden" aria-hidden="true">
