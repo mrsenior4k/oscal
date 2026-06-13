@@ -2918,7 +2918,6 @@ function getCreatorIdentityKeys(profile) {
 }
 
 function loggedInCreatorOwnsIsland() {
-  if (forceSupporterView) return false;
   if (!loggedInCreatorProfile) return false;
 
   const islandKeys = new Set([
@@ -2972,8 +2971,6 @@ function getCreatorSupporterProfile(profile) {
 }
 
 async function getLoggedInCreatorIdentity() {
-  if (forceSupporterView) return null;
-
   try {
     const res = await fetch("/api/me");
     if (!res.ok) return null;
@@ -2981,7 +2978,7 @@ async function getLoggedInCreatorIdentity() {
     const profile = await res.json();
     loggedInCreatorProfile = profile || null;
     updateCreatorOwnerMode();
-    return getCreatorSupporterProfile(profile);
+    return forceSupporterView ? null : getCreatorSupporterProfile(profile);
   } catch (err) {
     console.warn("Could not load logged-in creator identity", err);
     return null;
@@ -5059,7 +5056,7 @@ body: JSON.stringify({
   try {
     const startRes = await fetch(getEventEndpoint(), {
       method: "POST",
-      credentials: forceSupporterView ? "omit" : "same-origin",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json"
       },
@@ -5320,7 +5317,7 @@ body: JSON.stringify({
 
     const completeRes = await fetch(getEventEndpoint(), {
       method: "POST",
-      credentials: forceSupporterView ? "omit" : "same-origin",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json"
       },

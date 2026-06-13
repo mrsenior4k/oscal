@@ -33,6 +33,11 @@ function redirectHome(req, res) {
   return res.redirect("/dashboard");
 }
 
+function sendViewerPage(res) {
+  res.set("Cache-Control", "no-store, max-age=0");
+  return res.sendFile(path.join(__dirname, "public", "viewer.html"));
+}
+
 const LEGACY_CREATOR_SLUGS = new Set([
   "5thdimentionalbeing367",
   "5thdimensionalbeing367",
@@ -1167,9 +1172,7 @@ console.log("EVENT RECEIVED:", {
   }
 
   const creatorKey = getCanonicalCreatorKey(creator, req);
-  const isForcedSupporterView = isSupporterViewRequest(req, supporterView);
-
-  if (!isForcedSupporterView && isLoggedInCreatorForSlug(req, creator)) {
+  if (isLoggedInCreatorForSlug(req, creator)) {
     return res.json({
       success: false,
       message: "You cannot support your own island."
@@ -1711,7 +1714,7 @@ app.get("/island/:creator", (req, res) => {
     return res.redirect(`/island/${encodeURIComponent(profile.slug)}`);
   }
 
-  res.sendFile(path.join(__dirname, "public", "viewer.html"));
+  sendViewerPage(res);
 });
 
 
@@ -1720,7 +1723,7 @@ app.get("/:creator", (req, res) => {
     return res.redirect("/dashboard");
   }
 
-  res.sendFile(path.join(__dirname, "public", "viewer.html"));
+  sendViewerPage(res);
 });
 
 // ---------- Start server ----------
