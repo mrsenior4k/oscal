@@ -45,7 +45,9 @@ test("sponsor video clicks open the tracking link while playing", () => {
 
 test("sponsor ads have file-specific tracking links", () => {
   assert.ok(fs.existsSync("public/ads/14edef0cbf8a2d40565eb5af393e1aad.mp4"));
+  assert.ok(fs.existsSync("public/ads/53b751172cd670e0d39bcaaabf7c2df4.mp4"));
   assert.match(server, /"1000004233\.mp4":\s*"https:\/\/www\.tiktok\.com\/t\/ZP9jBjs2Xf1dD-8YB63\/"/);
   assert.match(server, /"14edef0cbf8a2d40565eb5af393e1aad\.mp4":\s*"https:\/\/www\.tiktok\.com\/t\/ZP9jBUuGC2UoB-GbJqv\/"/);
+  assert.match(server, /"53b751172cd670e0d39bcaaabf7c2df4\.mp4":\s*"https:\/\/www\.tiktok\.com\/t\/ZP9jBP6NX9JAM-0yiKG\/"/);
   assert.match(server, /clickUrl:\s*SPONSOR_AD_CLICK_URLS\[file\]\s*\|\|\s*DEFAULT_SPONSOR_CLICK_URL/);
 });

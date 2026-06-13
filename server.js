@@ -925,7 +925,8 @@ const SPONSOR_AD_DIR = path.join(__dirname, "public", "ads");
 const SPONSOR_AD_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".m4v"]);
 const SPONSOR_AD_CLICK_URLS = {
   "1000004233.mp4": "https://www.tiktok.com/t/ZP9jBjs2Xf1dD-8YB63/",
-  "14edef0cbf8a2d40565eb5af393e1aad.mp4": "https://www.tiktok.com/t/ZP9jBUuGC2UoB-GbJqv/"
+  "14edef0cbf8a2d40565eb5af393e1aad.mp4": "https://www.tiktok.com/t/ZP9jBUuGC2UoB-GbJqv/",
+  "53b751172cd670e0d39bcaaabf7c2df4.mp4": "https://www.tiktok.com/t/ZP9jBP6NX9JAM-0yiKG/"
 };
 const DEFAULT_SPONSOR_CLICK_URL = SPONSOR_AD_CLICK_URLS["1000004233.mp4"];
 const STICKER_DIR = path.join(__dirname, "public", "stickers");
