@@ -59,7 +59,7 @@ function safeDecode(value) {
 function normalizeCreatorSlug(slug) {
   return safeDecode(slug)
     .trim()
-    .replace(/^@/, "")
+    .replace(/^@+/, "")
     .replace(/\s+/g, " ")
     .toLowerCase();
 }
@@ -79,7 +79,7 @@ function getCreatorLookupKeys(...values) {
     const raw = safeDecode(value).trim();
     if (!raw) return;
 
-    const bare = raw.replace(/^@/, "");
+    const bare = raw.replace(/^@+/, "");
     const normalized = normalizeCreatorSlug(raw);
     const compact = compactCreatorSlug(raw);
 
@@ -157,6 +157,119 @@ function isLoggedInCreatorForSlug(req, slug) {
     profileMatchesSlug(sessionProfile, slug) ||
     profilesReferToSameCreator(sessionProfile, targetProfile)
   );
+}
+
+function isSupporterViewRequest(req, explicitValue = false) {
+  if (explicitValue === true || explicitValue === "true" || explicitValue === "1") {
+    return true;
+  }
+
+  if (req.query?.view === "supporter") {
+    return true;
+  }
+
+  const referrer = req.get("referer") || req.get("referrer") || "";
+  if (!referrer) return false;
+
+  try {
+    const parsed = new URL(referrer, `${req.protocol}://${req.get("host") || "localhost"}`);
+    return parsed.searchParams.get("view") === "supporter";
+  } catch (_) {
+    return String(referrer).includes("view=supporter");
+  }
+}
+
+function normalizeCreatorStatsKey(value) {
+  const raw = safeDecode(value).trim();
+  if (!raw) return "";
+
+  const compact = compactCreatorSlug(raw);
+  if (compact) return `@${compact}`;
+
+  return normalizeCreatorSlug(raw);
+}
+
+function getCreatorStatsLookupKeys(value, req = null) {
+  const profile = findCreatorProfile(value, req);
+  const keys = new Set();
+
+  [
+    value,
+    profile?.slug,
+    profile?.displayName
+  ].filter(Boolean).forEach(candidate => {
+    getCreatorLookupKeys(candidate).forEach(key => keys.add(key));
+    const statsKey = normalizeCreatorStatsKey(candidate);
+    if (statsKey) keys.add(statsKey);
+  });
+
+  return [...keys].filter(Boolean);
+}
+
+function getCanonicalCreatorKey(value, req = null) {
+  const profile = findCreatorProfile(value, req);
+  return normalizeCreatorStatsKey(profile?.slug || value);
+}
+
+function getCreatorStatsRecord(value, req = null) {
+  for (const key of getCreatorStatsLookupKeys(value, req)) {
+    if (creatorStats[key]) return { key, stats: creatorStats[key] };
+  }
+
+  return { key: getCanonicalCreatorKey(value, req), stats: null };
+}
+
+function mergeCreatorStatRecords(target = {}, source = {}) {
+  const merged = {
+    supports: Number(target.supports || 0) + Number(source.supports || 0),
+    earnings: Number(target.earnings || 0) + Number(source.earnings || 0),
+    videos: { ...(target.videos || {}) },
+    recentSupports: [
+      ...(Array.isArray(target.recentSupports) ? target.recentSupports : []),
+      ...(Array.isArray(source.recentSupports) ? source.recentSupports : [])
+    ],
+    supporterFirstSeen: {
+      ...(target.supporterFirstSeen || {})
+    },
+    supporterOrder: Array.isArray(target.supporterOrder)
+      ? [...target.supporterOrder]
+      : []
+  };
+
+  Object.entries(source.videos || {}).forEach(([videoId, sourceVideo]) => {
+    const existing = merged.videos[videoId] || {};
+    merged.videos[videoId] = {
+      ...existing,
+      ...sourceVideo,
+      supports: Number(existing.supports || 0) + Number(sourceVideo.supports || 0)
+    };
+  });
+
+  Object.entries(source.supporterFirstSeen || {}).forEach(([anonId, firstSeen]) => {
+    const current = Number(merged.supporterFirstSeen[anonId] || 0);
+    const next = Number(firstSeen || 0);
+
+    if (!current || (next && next < current)) {
+      merged.supporterFirstSeen[anonId] = next;
+    }
+  });
+
+  [
+    ...(Array.isArray(source.supporterOrder) ? source.supporterOrder : []),
+    ...merged.recentSupports
+      .sort((a, b) => Number(a.time || 0) - Number(b.time || 0))
+      .map(item => String(item.anonId || "").trim())
+  ].forEach(anonId => {
+    if (anonId && !merged.supporterOrder.includes(anonId)) {
+      merged.supporterOrder.push(anonId);
+    }
+  });
+
+  merged.recentSupports = merged.recentSupports
+    .sort((a, b) => Number(b.time || 0) - Number(a.time || 0))
+    .slice(0, 100);
+
+  return merged;
 }
 
 app.get("/", (req, res) => {
@@ -536,8 +649,78 @@ function saveData() {
   }
 }
 
+function canonicalizeSupporterCreatorCounts(counts) {
+  if (!counts || typeof counts !== "object") return {};
+
+  return Object.entries(counts).reduce((result, [creator, count]) => {
+    const key = getCanonicalCreatorKey(creator);
+    if (!key) return result;
+
+    result[key] = Number(result[key] || 0) + Number(count || 0);
+    return result;
+  }, {});
+}
+
+function canonicalizeSupporterCreatorTimes(times) {
+  if (!times || typeof times !== "object") return {};
+
+  return Object.entries(times).reduce((result, [creator, time]) => {
+    const key = getCanonicalCreatorKey(creator);
+    const next = Number(time || 0);
+    const current = Number(result[key] || 0);
+
+    if (key && (!current || (next && next < current))) {
+      result[key] = next;
+    }
+
+    return result;
+  }, {});
+}
+
+function canonicalizeStoredCreatorStats() {
+  let changed = false;
+  const nextCreatorStats = {};
+
+  Object.entries(creatorStats).forEach(([creator, stats]) => {
+    const canonicalKey = getCanonicalCreatorKey(creator);
+    if (!canonicalKey) return;
+
+    if (canonicalKey !== creator) changed = true;
+    nextCreatorStats[canonicalKey] = mergeCreatorStatRecords(
+      nextCreatorStats[canonicalKey],
+      stats
+    );
+  });
+
+  Object.entries(supporterStats).forEach(([anonId, stats]) => {
+    if (!stats || typeof stats !== "object") return;
+
+    const supportedCreators = canonicalizeSupporterCreatorCounts(stats.supportedCreators);
+    const dayOneCreators = canonicalizeSupporterCreatorTimes(stats.dayOneCreators);
+
+    if (
+      JSON.stringify(supportedCreators) !== JSON.stringify(stats.supportedCreators || {}) ||
+      JSON.stringify(dayOneCreators) !== JSON.stringify(stats.dayOneCreators || {})
+    ) {
+      changed = true;
+      supporterStats[anonId] = {
+        ...stats,
+        supportedCreators,
+        dayOneCreators
+      };
+    }
+  });
+
+  if (changed) {
+    creatorStats = nextCreatorStats;
+    saveData();
+  }
+}
+
+canonicalizeStoredCreatorStats();
+
 // ---------- Config ----------
-const MAX_SUPPORTS_PER_DAY = 3;
+const MAX_SUPPORTS_PER_DAY = 4;
 const COOLDOWN_MS = 30_000; // 30 seconds
 const REWARD_PER_SUPPORT = 0.05;
 const MIN_AD_WATCH_MS = 14_000; // basic backend validation
@@ -703,7 +886,7 @@ function getOrCreateSupporterStats(anonId, firstSeenAt = Date.now()) {
 }
 
 function ensureCreatorSupporterTracking(creator) {
-  const stats = creatorStats[creator];
+  const { stats } = getCreatorStatsRecord(creator);
   if (!stats) return false;
 
   let changed = false;
@@ -779,16 +962,17 @@ function hydrateBadgeStateFromRecentSupports() {
 function recordSupporterStats(anonId, creator, supportTime = Date.now()) {
   const key = String(anonId || "").trim();
   if (!key) return [];
+  const creatorKey = getCanonicalCreatorKey(creator);
 
   const stats = getOrCreateSupporterStats(key, supportTime);
   stats.firstSeenAt = Math.min(stats.firstSeenAt, supportTime);
   stats.lastSupportAt = supportTime;
   stats.totalSupports += 1;
-  stats.supportedCreators[creator] = Number(stats.supportedCreators[creator] || 0) + 1;
+  stats.supportedCreators[creatorKey] = Number(stats.supportedCreators[creatorKey] || 0) + 1;
 
-  ensureCreatorSupporterTracking(creator);
+  ensureCreatorSupporterTracking(creatorKey);
 
-  const creatorRecord = creatorStats[creator];
+  const creatorRecord = creatorStats[creatorKey];
   if (creatorRecord && !creatorRecord.supporterFirstSeen[key]) {
     creatorRecord.supporterFirstSeen[key] = supportTime;
     creatorRecord.supporterOrder.push(key);
@@ -796,7 +980,7 @@ function recordSupporterStats(anonId, creator, supportTime = Date.now()) {
 
   const dayOneIndex = creatorRecord?.supporterOrder?.indexOf(key) ?? -1;
   if (dayOneIndex >= 0 && dayOneIndex < DAY_ONE_SUPPORTER_LIMIT) {
-    stats.dayOneCreators[creator] = creatorRecord.supporterFirstSeen[key] || supportTime;
+    stats.dayOneCreators[creatorKey] = creatorRecord.supporterFirstSeen[key] || supportTime;
   }
 
   return getSupporterBadges(key);
@@ -963,17 +1147,29 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
   fingerprint,
   anonId,
   timeZone,
+  supporterView = false,
   videoId = "main",
   videoTitle = "Main support page",
   videoThumbnail = "",
   platform = "unknown"
 } = req.body;
 
+console.log("EVENT RECEIVED:", {
+  type,
+  creator,
+  anonId,
+  timeZone,
+  supporterView
+});
+
   if (!type || !creator || !fingerprint || !timeZone) {
     return res.json({ success: false, message: 'Missing data' });
   }
 
-  if (isLoggedInCreatorForSlug(req, creator)) {
+  const creatorKey = getCanonicalCreatorKey(creator, req);
+  const isForcedSupporterView = isSupporterViewRequest(req, supporterView);
+
+  if (!isForcedSupporterView && isLoggedInCreatorForSlug(req, creator)) {
     return res.json({
       success: false,
       message: "You cannot support your own island."
@@ -1102,8 +1298,8 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
     userData.adStartTime = 0;
 
     // update creator
-    if (!creatorStats[creator]) {
-      creatorStats[creator] = {
+    if (!creatorStats[creatorKey]) {
+      creatorStats[creatorKey] = {
         supports: 0,
         earnings: 0,
         videos: {},
@@ -1113,18 +1309,18 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
       };
     }
 
-    creatorStats[creator].supports++;
-    creatorStats[creator].earnings += REWARD_PER_SUPPORT;
+    creatorStats[creatorKey].supports++;
+    creatorStats[creatorKey].earnings += REWARD_PER_SUPPORT;
 
-if (!creatorStats[creator].recentSupports) {
-  creatorStats[creator].recentSupports = [];
+if (!creatorStats[creatorKey].recentSupports) {
+  creatorStats[creatorKey].recentSupports = [];
 }
-recordSupporterStats(anonId, creator, now);
+recordSupporterStats(anonId, creatorKey, now);
 const badges = getSupporterBadgeCollection(anonId);
 const equippedBadge = getEquippedSupporterBadge(anonId);
 const savedProfile = supporterProfiles[anonId] || {};
 
-creatorStats[creator].recentSupports.unshift({
+creatorStats[creatorKey].recentSupports.unshift({
   name: savedProfile.name || `Anonymous #${anonId || "0000"}`,
   pfp: savedProfile.pfp || "",
   anonId,
@@ -1133,18 +1329,18 @@ creatorStats[creator].recentSupports.unshift({
   time: now
 });
 
-creatorStats[creator].recentSupports = creatorStats[creator].recentSupports.slice(0, 100);
+creatorStats[creatorKey].recentSupports = creatorStats[creatorKey].recentSupports.slice(0, 100);
 
-const creatorSupportsForViewer = creatorStats[creator].recentSupports.filter(item =>
+const creatorSupportsForViewer = creatorStats[creatorKey].recentSupports.filter(item =>
   String(item.anonId) === String(anonId)
 ).length;
     
-    if (!creatorStats[creator].videos) {
-  creatorStats[creator].videos = {};
+    if (!creatorStats[creatorKey].videos) {
+  creatorStats[creatorKey].videos = {};
 }
 
-if (!creatorStats[creator].videos[videoId]) {
-  creatorStats[creator].videos[videoId] = {
+if (!creatorStats[creatorKey].videos[videoId]) {
+  creatorStats[creatorKey].videos[videoId] = {
     videoId,
     videoTitle,
     videoThumbnail,
@@ -1153,15 +1349,15 @@ if (!creatorStats[creator].videos[videoId]) {
   };
 }
 
-creatorStats[creator].videos[videoId].supports++;
-creatorStats[creator].videos[videoId].videoTitle = videoTitle;
-creatorStats[creator].videos[videoId].videoThumbnail = videoThumbnail;
-creatorStats[creator].videos[videoId].platform = platform;
+creatorStats[creatorKey].videos[videoId].supports++;
+creatorStats[creatorKey].videos[videoId].videoTitle = videoTitle;
+creatorStats[creatorKey].videos[videoId].videoThumbnail = videoThumbnail;
+creatorStats[creatorKey].videos[videoId].platform = platform;
 
     // log event once
     events.push({
       timestamp: now,
-      creator,
+      creator: creatorKey,
       fingerprint: deviceProgressKey,
       type: 'support_complete',
       timeZone
@@ -1169,13 +1365,13 @@ creatorStats[creator].videos[videoId].platform = platform;
 
     saveData();
 
-    const videos = Object.values(creatorStats[creator].videos || {});
+    const videos = Object.values(creatorStats[creatorKey].videos || {});
 const mostSupportedVideo =
   videos.sort((a, b) => b.supports - a.supports)[0] || null;
 
 return res.json({
   success: true,
-  supports: creatorStats[creator].supports,
+  supports: creatorStats[creatorKey].supports,
   creatorSupports: creatorSupportsForViewer,
   badges,
   equippedBadge,
@@ -1204,26 +1400,30 @@ app.get("/support-island", requireCreatorLogin, (req, res) => {
 // ---------- Count endpoint ----------
 app.get('/count/:creator', enforceRateLimit("count", 60_000, 120), (req, res) => {
   const creator = req.params.creator;
+  const { key: creatorKey, stats } = getCreatorStatsRecord(creator, req);
+  const creatorRecord = stats || {
+    supports: 0,
+    earnings: 0,
+    videos: {},
+    recentSupports: []
+  };
 
-  if (!creatorStats[creator]) {
-    creatorStats[creator] = {
-      supports: 0,
-      earnings: 0,
-      videos: {},
-      recentSupports: []
-    };
-  }
+  console.log("COUNT REQUEST:", {
+  creator,
+  creatorKey,
+  availableCreators: Object.keys(creatorStats)
+});
 
-  const videos = Object.values(creatorStats[creator].videos || {});
+  const videos = Object.values(creatorRecord.videos || {});
 
   const topVideos = videos
     .sort((a, b) => b.supports - a.supports)
     .slice(0, 5);
 
   res.json({
-    supports: creatorStats[creator].supports || 0,
-    earnings: Number((creatorStats[creator].earnings || 0).toFixed(2)),
-    recentSupports: (creatorStats[creator].recentSupports || [])
+    supports: creatorRecord.supports || 0,
+    earnings: Number((creatorRecord.earnings || 0).toFixed(2)),
+    recentSupports: (creatorRecord.recentSupports || [])
   .sort((a, b) => b.time - a.time)
   .map(attachSupporterBadges),
     topVideos
@@ -1324,8 +1524,9 @@ app.post("/support/emoji", enforceRateLimit("support-reaction", 60_000, 30), (re
   const reaction = String(emoji || "").trim().slice(0, 80);
   const cleanStickerUrl = String(stickerUrl || "").trim();
   const isSticker = reactionType === "sticker";
+  const { stats: creatorRecord } = getCreatorStatsRecord(creator, req);
 
-  if (!creatorStats[creator] || !creatorStats[creator].recentSupports) {
+  if (!creatorRecord || !creatorRecord.recentSupports) {
     return res.json({ success: false, message: "Creator/support list not found" });
   }
 
@@ -1337,7 +1538,7 @@ app.post("/support/emoji", enforceRateLimit("support-reaction", 60_000, 30), (re
     return res.json({ success: false, message: "Invalid sticker" });
   }
 
-  const supports = creatorStats[creator].recentSupports;
+  const supports = creatorRecord.recentSupports;
 
   const item = supports.find(s =>
     s.name === `Anonymous #${anonId}` ||
@@ -1415,20 +1616,26 @@ app.get("/api/creator/:slug", enforceRateLimit("creator-profile", 60_000, 120), 
   res.json(findCreatorProfile(req.params.slug, req));
 });
 app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
-  const creator = req.session.creatorProfile.slug;
-  const stats = creatorStats[creator] || {
+  const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+  const { stats } = getCreatorStatsRecord(creator, req);
+  const creatorRecord = stats || {
     supports: 0,
     earnings: 0,
     videos: {},
     recentSupports: []
   };
+  const videos = Object.values(creatorRecord.videos || {});
+  const topVideos = videos
+    .sort((a, b) => b.supports - a.supports)
+    .slice(0, 5);
 
   res.json({
     creator,
-    supports: stats.supports || 0,
-    earnings: Number((stats.earnings || 0).toFixed(2)),
-    recentSupports: (stats.recentSupports || []).map(attachSupporterBadges),
-    videos: stats.videos || {}
+    supports: creatorRecord.supports || 0,
+    earnings: Number((creatorRecord.earnings || 0).toFixed(2)),
+    recentSupports: (creatorRecord.recentSupports || []).map(attachSupporterBadges),
+    videos: creatorRecord.videos || {},
+    topVideos
   });
 });
 
@@ -1446,9 +1653,10 @@ app.post("/support/status", enforceRateLimit("support-status", 60_000, 60), (req
 
 let lifetimeSupports = getSupporterLifetimeSupports(anonId);
 let creatorSupports = 0;
+const { stats: creatorRecord } = getCreatorStatsRecord(creator, req);
 
-if (creator && creatorStats[creator]?.recentSupports) {
-  creatorStats[creator].recentSupports.forEach(item => {
+if (creatorRecord?.recentSupports) {
+  creatorRecord.recentSupports.forEach(item => {
     if (String(item.anonId) === String(anonId)) {
       creatorSupports++;
     }
