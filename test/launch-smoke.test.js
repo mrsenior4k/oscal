@@ -35,3 +35,9 @@ test("browser debug logs are not leaking profile or response details", () => {
   assert.doesNotMatch(viewer, /RAW RESPONSE|CURRENT CREATOR/);
   assert.doesNotMatch(dashboard, /LOGGED IN PROFILE|PROFILE IMAGE URL/);
 });
+
+test("sponsor video clicks open the tracking link while playing", () => {
+  assert.match(viewer, /SPONSOR_CLICK_URL\s*=\s*"https:\/\/www\.tiktok\.com\/t\/ZP9jBjs2Xf1dD-8YB63\/"/);
+  assert.match(viewer, /function openSponsorClickUrl/);
+  assert.match(viewer, /window\.open\(clickUrl,\s*"_blank"/);
+});

@@ -2673,6 +2673,7 @@
     let sponsorSkipTimeout = null;
     let sponsorSkipUnlocked = false;
     const SPONSOR_SKIP_AFTER_MS = 15000;
+    const SPONSOR_CLICK_URL = "https://www.tiktok.com/t/ZP9jBjs2Xf1dD-8YB63/";
 
     const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const fingerprint =
@@ -4832,6 +4833,7 @@ body: JSON.stringify({
         video.onplaying = null;
         video.ontimeupdate = null;
         video.onclick = null;
+        video.style.cursor = "";
       }
 
       if (overlay) {
@@ -4898,6 +4900,22 @@ body: JSON.stringify({
       finishSponsorVideo(activeSponsorButton, true);
     }
 
+    function openSponsorClickUrl(clickUrl) {
+      const video = document.getElementById("sponsorVideo");
+      const canTrackClick =
+        clickUrl &&
+        adInProgress &&
+        !sponsorFinished &&
+        sponsorWatchStartedAt &&
+        video &&
+        !video.paused &&
+        !video.ended;
+
+      if (!canTrackClick) return;
+
+      window.open(clickUrl, "_blank", "noopener,noreferrer");
+    }
+
     async function playSponsorVideo(btn) {
       activeSponsorButton = btn;
       sponsorFinished = false;
@@ -4916,6 +4934,7 @@ body: JSON.stringify({
       }
 
       const ad = adData.ad;
+      const sponsorClickUrl = adData.clickUrl || SPONSOR_CLICK_URL;
       sponsorMinimumWatchMs = Number(adData.minimumWatchMs || 15000);
 
       if (!ad || !ad.url) {
@@ -4942,6 +4961,7 @@ body: JSON.stringify({
 
       video.src = ad.url;
       video.currentTime = 0;
+      video.style.cursor = "pointer";
       video.onloadedmetadata = () => {
         if (Number.isFinite(video.duration) && video.duration > 0) {
           sponsorMinimumWatchMs = Math.max(
@@ -4974,7 +4994,10 @@ body: JSON.stringify({
       video.onclick = () => {
         if (video.paused && !sponsorFinished) {
           video.play().catch(() => {});
+          return;
         }
+
+        openSponsorClickUrl(sponsorClickUrl);
       };
 
       try {
