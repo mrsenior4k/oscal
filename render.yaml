@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: oscal
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: oscal-data
+      mountPath: /var/data
+      sizeGB: 1
