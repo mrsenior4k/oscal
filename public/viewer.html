@@ -2717,8 +2717,10 @@ let selectedSupporterPfpPreview = "";
 let stickerVideos = [];
 let stickerVideosLoaded = false;
 const stickerAssetVersion = Date.now();
-const BADGE_UNREAD_STORAGE_KEY = "unreadSupporterBadgeIds";
-const BADGE_KNOWN_STORAGE_KEY = "knownUnlockedSupporterBadgeIds";
+const SUPPORTER_STORAGE_SCOPE = String(anonId || "anonymous");
+const BADGE_UNREAD_STORAGE_KEY = `unreadSupporterBadgeIds:${SUPPORTER_STORAGE_SCOPE}`;
+const BADGE_KNOWN_STORAGE_KEY = `knownUnlockedSupporterBadgeIds:${SUPPORTER_STORAGE_SCOPE}`;
+const EQUIPPED_BADGE_STORAGE_KEY = `equippedSupporterBadge:${SUPPORTER_STORAGE_SCOPE}`;
 let unreadBadgeIds = new Set(readStoredIdList(BADGE_UNREAD_STORAGE_KEY));
 let knownUnlockedBadgeIds = new Set(readStoredIdList(BADGE_KNOWN_STORAGE_KEY));
 let badgeNotificationsInitialized = localStorage.getItem(BADGE_KNOWN_STORAGE_KEY) !== null;
@@ -3186,7 +3188,7 @@ function normalizeBadgeCollection(badges = []) {
 function normalizeEquippedBadge(badge) {
   if (!badge) {
     try {
-      badge = JSON.parse(localStorage.getItem("equippedSupporterBadge") || "null");
+      badge = JSON.parse(localStorage.getItem(EQUIPPED_BADGE_STORAGE_KEY) || "null");
     } catch (_) {
       badge = null;
     }
@@ -3538,9 +3540,9 @@ function applyEquippedSupporterBadge(badge) {
   equippedSupporterBadge = badge?.id ? badge : null;
 
   if (equippedSupporterBadge) {
-    localStorage.setItem("equippedSupporterBadge", JSON.stringify(equippedSupporterBadge));
+    localStorage.setItem(EQUIPPED_BADGE_STORAGE_KEY, JSON.stringify(equippedSupporterBadge));
   } else {
-    localStorage.removeItem("equippedSupporterBadge");
+    localStorage.removeItem(EQUIPPED_BADGE_STORAGE_KEY);
   }
 
   updateSupporterMenu();
