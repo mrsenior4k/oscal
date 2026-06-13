@@ -365,12 +365,31 @@ function renderDashboardBadge(badge) {
   if (!badge) return "";
 
   return `
+    <span
+      class="supporter-badge"
+      data-badge-id="${escapeHtml(badge.id)}"
+      title="${escapeHtml(`${badge.label}: ${badge.description || ""}`)}"
+    >${escapeHtml(badge.short || badge.label || "Badge")}</span>
+  `;
+}
+
+function getVisibleDashboardBadges(badges = [], equippedBadge = null) {
+  if (equippedBadge?.id) {
+    return [equippedBadge];
+  }
+
+  return (Array.isArray(badges) ? badges : [])
+    .filter(badge => badge?.id && badge.unlocked !== false)
+    .slice(0, 1);
+}
+
+function renderDashboardBadges(badges = [], equippedBadge = null) {
+  const visibleBadges = getVisibleDashboardBadges(badges, equippedBadge);
+  if (!visibleBadges.length) return "";
+
+  return `
     <span class="badge-strip">
-      <span
-        class="supporter-badge"
-        data-badge-id="${escapeHtml(badge.id)}"
-        title="${escapeHtml(`${badge.label}: ${badge.description || ""}`)}"
-      >${escapeHtml(badge.short || badge.label || "Badge")}</span>
+      ${visibleBadges.map(renderDashboardBadge).join("")}
     </span>
   `;
 }
@@ -427,36 +446,8 @@ img.src = profile.profileImage || "";
   publicLink = getSupportIslandLink();
   document.getElementById("supportIslandLink").href = publicLink;
 
-  const bareSlug = profile.slug?.replace(/^@/, "");
-  const possibleKeys = Array.from(new Set([
-    profile.slug,
-    bareSlug ? "@" + bareSlug : "",
-    bareSlug
-  ].filter(Boolean)));
-
-  let countData = null;
-
-  for (const key of possibleKeys) {
-    const res = await fetch("/count/" + encodeURIComponent(key));
-    const data = await res.json();
-
-    console.log("TESTING KEY:", key, data);
-
-    if (data.supports > 0) {
-      countData = data;
-      console.log("FOUND CREATOR KEY:", key);
-      break;
-    }
-  }
-
-  if (!countData) {
-    countData = {
-      supports: 0,
-      earnings: 0,
-      topVideos: [],
-      recentSupports: []
-    };
-  }
+  const statsRes = await fetch("/api/dashboard/stats");
+  const countData = await statsRes.json();
 
   const supports = Number(countData.supports || 0);
   const earnings = Number(countData.earnings || 0);
@@ -488,7 +479,7 @@ img.src = profile.profileImage || "";
           <div class="feed-left">
             <div class="feed-name-line">
               <strong>${escapeHtml(item.name)}</strong>
-              ${renderDashboardBadge(item.equippedBadge)}
+              ${renderDashboardBadges(item.badges, item.equippedBadge)}
             </div>
             <span>${escapeHtml(item.emoji ? item.emoji : "Support echoed into the well")}</span>
           </div>

@@ -3215,30 +3215,20 @@ function renderEquippedSupporterBadge(container, badge) {
 }
 
 function getVisibleSupporterBadges(badges = [], equippedBadge = null) {
-  const visible = [];
-  const seen = new Set();
-
   if (equippedBadge?.id) {
-    visible.push(equippedBadge);
-    seen.add(equippedBadge.id);
+    return [equippedBadge];
   }
 
-  (Array.isArray(badges) ? badges : [])
+  return (Array.isArray(badges) ? badges : [])
     .filter(badge => badge?.id && badge.unlocked !== false)
-    .forEach(badge => {
-      if (seen.has(badge.id)) return;
-      seen.add(badge.id);
-      visible.push(badge);
-    });
-
-  return visible;
+    .slice(0, 1);
 }
 
-function renderPublicSupporterBadges(container, badges = [], equippedBadge = null, limit = 3) {
+function renderPublicSupporterBadges(container, badges = [], equippedBadge = null) {
   renderSupporterBadges(
     container,
     getVisibleSupporterBadges(badges, equippedBadge),
-    limit
+    1
   );
 }
 
