@@ -33,6 +33,14 @@ test("owner-device self-support guard is wired through viewer and dashboard", ()
   assert.match(dashboard, /getDashboardDeviceFamily/);
 });
 
+test("creator login entrypoint is platform neutral", () => {
+  assert.match(server, /app\.get\("\/auth\/creator"/);
+  assert.match(server, /res\.redirect\("\/auth\/creator"\)/);
+  assert.match(dashboard, /window\.location\.href = "\/auth\/creator"/);
+  assert.doesNotMatch(privacy, /YouTube sign-in/);
+  assert.doesNotMatch(terms, /sign in with YouTube/);
+});
+
 test("browser debug logs are not leaking profile or response details", () => {
   assert.doesNotMatch(viewer, /RAW RESPONSE|CURRENT CREATOR/);
   assert.doesNotMatch(dashboard, /LOGGED IN PROFILE|PROFILE IMAGE URL/);
@@ -64,9 +72,11 @@ test("privacy and terms pages are routed and linked", () => {
   assert.match(dashboard, /href="\/privacy"/);
   assert.match(dashboard, /href="\/terms"/);
   assert.match(privacy, /Privacy Policy/);
+  assert.match(privacy, /creator sign-in/);
   assert.match(privacy, /Device and browser signals/);
   assert.match(privacy, /TikTok Ad Links/);
   assert.match(terms, /Terms of Use/);
+  assert.match(terms, /Creators may sign in so Oscal can identify/);
   assert.match(terms, /Fair Use/);
   assert.match(terms, /Ad Videos and Third-Party Links/);
   assert.match(terms, /Estimated earnings are not a guarantee/);

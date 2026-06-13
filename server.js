@@ -331,6 +331,10 @@ app.get("/auth/youtube", (req, res) => {
   res.redirect(url);
 });
 
+app.get("/auth/creator", (req, res) => {
+  res.redirect("/auth/youtube");
+});
+
 app.get("/auth/youtube/callback", async (req, res) => {
   const { code } = req.query;
 
@@ -350,7 +354,7 @@ app.get("/auth/youtube/callback", async (req, res) => {
   const channel = response.data.items?.[0];
 
   if (!channel?.snippet) {
-    return res.status(502).send("Could not load your YouTube channel profile. Please try logging in again.");
+    return res.status(502).send("Could not load your creator profile. Please try logging in again.");
   }
 
   const profileImage =
@@ -1553,7 +1557,7 @@ return res.json({
 });
 function requireCreatorLogin(req, res, next) {
   if (!req.session.creatorProfile) {
-    return res.redirect("/auth/youtube");
+    return res.redirect("/auth/creator");
   }
 
   rememberCreatorOwnerDevice(req, req.session.creatorProfile.slug, req.query.deviceFamily);
