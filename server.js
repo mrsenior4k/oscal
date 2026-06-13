@@ -20,6 +20,7 @@ let supporterProfiles = {};
 let supporterStats = {};
 let creatorStats = {};
 let creatorProfiles = {};
+let creatorOwnerDevices = {};
 
 app.use(session({
   secret: "change-this-secret-later",
@@ -44,6 +45,8 @@ const LEGACY_CREATOR_SLUGS = new Set([
   "5th dimentional being",
   "5th dimensional being"
 ]);
+
+const OWNER_DEVICE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 const FALLBACK_CREATOR_PROFILE = {
   slug: process.env.FALLBACK_CREATOR_SLUG || "@5thdimentionalbeing367",
@@ -344,7 +347,8 @@ app.get("/auth/youtube/callback", async (req, res) => {
   };
 
   storeCreatorProfile(creatorProfile, channel.id);
-saveData();
+  rememberCreatorOwnerDevice(req, creatorProfile.slug);
+  saveData();
   req.session.creatorProfile = creatorProfile;
 
   req.session.save(() => {
@@ -454,6 +458,7 @@ function migrateJsonDataIfNeeded() {
     writeState("supporterProfiles", data.supporterProfiles || {});
     writeState("supporterStats", data.supporterStats || {});
     writeState("creatorProfiles", data.creatorProfiles || {});
+    writeState("creatorOwnerDevices", data.creatorOwnerDevices || {});
 
     console.log("Migrated data.json into data/app.sqlite");
   } catch (err) {
@@ -469,6 +474,7 @@ events = readState("events", []);
 supporterProfiles = readState("supporterProfiles", {});
 supporterStats = readState("supporterStats", {});
 creatorProfiles = readState("creatorProfiles", {});
+creatorOwnerDevices = readState("creatorOwnerDevices", {});
 
 // ---------- Helpers ----------
 function hashFingerprint(fingerprintString) {
@@ -485,6 +491,96 @@ function getClientIp(req) {
 
 function getDeviceProgressKey(req, fingerprint) {
   return hashFingerprint(`${getClientIp(req)}|${String(fingerprint || "").trim()}`);
+}
+
+function normalizeOwnerDeviceRecord(record = {}) {
+  return {
+    ipHashes:
+      record.ipHashes && typeof record.ipHashes === "object"
+        ? record.ipHashes
+        : {},
+    deviceKeys:
+      record.deviceKeys && typeof record.deviceKeys === "object"
+        ? record.deviceKeys
+        : {}
+  };
+}
+
+function pruneOwnerDeviceRecord(record, now = Date.now()) {
+  ["ipHashes", "deviceKeys"].forEach(group => {
+    Object.entries(record[group] || {}).forEach(([key, seenAt]) => {
+      if (now - Number(seenAt || 0) > OWNER_DEVICE_TTL_MS) {
+        delete record[group][key];
+      }
+    });
+  });
+}
+
+function getOwnerDeviceFamily(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 220);
+}
+
+function getOwnerIpHash(req) {
+  return hashFingerprint(`creator-owner-ip|${getClientIp(req)}`);
+}
+
+function getOwnerDeviceKey(req, deviceFamily) {
+  const family = getOwnerDeviceFamily(deviceFamily);
+  if (!family) return "";
+
+  return hashFingerprint(`creator-owner-device|${getClientIp(req)}|${family}`);
+}
+
+function rememberCreatorOwnerDevice(req, creator, deviceFamily = "") {
+  const creatorKey = getCanonicalCreatorKey(creator, req);
+  if (!creatorKey) return false;
+
+  const now = Date.now();
+  const record = normalizeOwnerDeviceRecord(creatorOwnerDevices[creatorKey]);
+  pruneOwnerDeviceRecord(record, now);
+
+  let changed = false;
+  const ipHash = getOwnerIpHash(req);
+  const deviceKey = getOwnerDeviceKey(req, deviceFamily);
+
+  if (!record.ipHashes[ipHash] || now - Number(record.ipHashes[ipHash]) > 24 * 60 * 60 * 1000) {
+    record.ipHashes[ipHash] = now;
+    changed = true;
+  }
+
+  if (
+    deviceKey &&
+    (!record.deviceKeys[deviceKey] || now - Number(record.deviceKeys[deviceKey]) > 24 * 60 * 60 * 1000)
+  ) {
+    record.deviceKeys[deviceKey] = now;
+    changed = true;
+  }
+
+  creatorOwnerDevices[creatorKey] = record;
+  if (changed) saveData();
+
+  return changed;
+}
+
+function isKnownCreatorOwnerDevice(req, creator, deviceFamily = "") {
+  const creatorKey = getCanonicalCreatorKey(creator, req);
+  if (!creatorKey) return false;
+
+  const record = normalizeOwnerDeviceRecord(creatorOwnerDevices[creatorKey]);
+  pruneOwnerDeviceRecord(record);
+  creatorOwnerDevices[creatorKey] = record;
+
+  const deviceKey = getOwnerDeviceKey(req, deviceFamily);
+  if (deviceKey && record.deviceKeys[deviceKey]) return true;
+
+  if (deviceKey && Object.keys(record.deviceKeys).length > 0) {
+    return false;
+  }
+
+  return Boolean(record.ipHashes[getOwnerIpHash(req)]);
 }
 
 const insertRateLimitHitStmt = db.prepare(
@@ -646,6 +742,7 @@ function saveData() {
     writeState("supporterProfiles", supporterProfiles);
     writeState("supporterStats", supporterStats);
     writeState("creatorProfiles", creatorProfiles);
+    writeState("creatorOwnerDevices", creatorOwnerDevices);
 
     db.exec("COMMIT");
   } catch (err) {
@@ -685,6 +782,7 @@ function canonicalizeSupporterCreatorTimes(times) {
 function canonicalizeStoredCreatorStats() {
   let changed = false;
   const nextCreatorStats = {};
+  const nextCreatorOwnerDevices = {};
 
   Object.entries(creatorStats).forEach(([creator, stats]) => {
     const canonicalKey = getCanonicalCreatorKey(creator);
@@ -715,6 +813,32 @@ function canonicalizeStoredCreatorStats() {
       };
     }
   });
+
+  Object.entries(creatorOwnerDevices).forEach(([creator, record]) => {
+    const canonicalKey = getCanonicalCreatorKey(creator);
+    if (!canonicalKey) return;
+
+    const normalizedRecord = normalizeOwnerDeviceRecord(record);
+    pruneOwnerDeviceRecord(normalizedRecord);
+
+    if (canonicalKey !== creator) changed = true;
+
+    const targetRecord = normalizeOwnerDeviceRecord(nextCreatorOwnerDevices[canonicalKey]);
+    ["ipHashes", "deviceKeys"].forEach(group => {
+      Object.entries(normalizedRecord[group]).forEach(([key, seenAt]) => {
+        targetRecord[group][key] = Math.max(
+          Number(targetRecord[group][key] || 0),
+          Number(seenAt || 0)
+        );
+      });
+    });
+    nextCreatorOwnerDevices[canonicalKey] = targetRecord;
+  });
+
+  if (JSON.stringify(nextCreatorOwnerDevices) !== JSON.stringify(creatorOwnerDevices)) {
+    creatorOwnerDevices = nextCreatorOwnerDevices;
+    changed = true;
+  }
 
   if (changed) {
     creatorStats = nextCreatorStats;
@@ -1152,6 +1276,7 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
   fingerprint,
   anonId,
   timeZone,
+  deviceFamily = "",
   supporterView = false,
   videoId = "main",
   videoTitle = "Main support page",
@@ -1164,6 +1289,7 @@ console.log("EVENT RECEIVED:", {
   creator,
   anonId,
   timeZone,
+  deviceFamily,
   supporterView
 });
 
@@ -1172,7 +1298,10 @@ console.log("EVENT RECEIVED:", {
   }
 
   const creatorKey = getCanonicalCreatorKey(creator, req);
-  if (isLoggedInCreatorForSlug(req, creator)) {
+  if (
+    isLoggedInCreatorForSlug(req, creator) ||
+    isKnownCreatorOwnerDevice(req, creator, deviceFamily)
+  ) {
     return res.json({
       success: false,
       message: "You cannot support your own island."
@@ -1389,6 +1518,7 @@ function requireCreatorLogin(req, res, next) {
     return res.redirect("/auth/youtube");
   }
 
+  rememberCreatorOwnerDevice(req, req.session.creatorProfile.slug, req.query.deviceFamily);
   next();
 }
 
@@ -1606,14 +1736,21 @@ app.get("/api/storage/status", requireDevAccess, (req, res) => {
     usingRenderDiskDefault: DATA_DIR === RENDER_DISK_DEFAULT_DIR,
     dbFile,
     creatorCount: Object.keys(creatorStats).length,
+    ownerDeviceCreatorCount: Object.keys(creatorOwnerDevices).length,
     totalSupports
   });
 });
 
 app.get("/api/me", (req, res) => {
+  if (req.session.creatorProfile) {
+    rememberCreatorOwnerDevice(
+      req,
+      req.session.creatorProfile.slug,
+      req.query.deviceFamily
+    );
+  }
 
   res.json(req.session.creatorProfile || null);
-
 });
 app.get("/api/creator/:slug", enforceRateLimit("creator-profile", 60_000, 120), (req, res) => {
   res.json(findCreatorProfile(req.params.slug, req));

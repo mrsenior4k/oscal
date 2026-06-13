@@ -352,6 +352,17 @@
     let publicLink = "";
 let currentProfile = null;
 
+function getDashboardDeviceFamily() {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return [
+    screen.width,
+    screen.height,
+    screen.colorDepth,
+    navigator.platform,
+    timeZone
+  ].join("|");
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -424,7 +435,9 @@ function copySupportIslandLink() {
 }
 
     async function loadDashboard() {
-  const meRes = await fetch("/api/me");
+  const meRes = await fetch(
+    `/api/me?deviceFamily=${encodeURIComponent(getDashboardDeviceFamily())}`
+  );
   const profile = await meRes.json();
 
   console.log("LOGGED IN PROFILE:", profile);

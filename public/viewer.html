@@ -2681,6 +2681,13 @@
       screen.height +
       navigator.platform +
       userTimeZone;
+    const deviceFamily = [
+      screen.width,
+      screen.height,
+      screen.colorDepth,
+      navigator.platform,
+      userTimeZone
+    ].join("|");
 
 const pathParts = window.location.pathname.split("/").filter(Boolean);
 
@@ -2972,7 +2979,9 @@ function getCreatorSupporterProfile(profile) {
 
 async function getLoggedInCreatorIdentity() {
   try {
-    const res = await fetch("/api/me");
+    const res = await fetch(
+      `/api/me?deviceFamily=${encodeURIComponent(deviceFamily)}`
+    );
     if (!res.ok) return null;
 
     const profile = await res.json();
@@ -5066,6 +5075,7 @@ body: JSON.stringify({
         fingerprint,
         anonId,
         timeZone: userTimeZone,
+        deviceFamily,
         supporterView: forceSupporterView,
         videoId,
         videoTitle,
@@ -5327,6 +5337,7 @@ body: JSON.stringify({
         fingerprint,
         anonId,
         timeZone: userTimeZone,
+        deviceFamily,
         supporterView: forceSupporterView,
 
         supporterName:
