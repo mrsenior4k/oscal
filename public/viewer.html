@@ -1601,6 +1601,24 @@
     color: var(--muted);
   }
 
+.feed-name-line .badge-strip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 0;
+}
+
+.feed-name-line .supporter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0;
+  font-size: 9px;
+  line-height: 1;
+  color: #ffe8a8;
+}
+
   .identity-card {
   margin-top: 18px;
   padding: 18px;
@@ -1784,6 +1802,29 @@
     color: #fff4d2;
     font-size: 13px;
     font-weight: 900;
+  }
+
+  .ad-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .ad-skip {
+    min-height: 34px;
+    padding: 0 13px;
+    border: 1px solid rgba(125, 211, 252, 0.35);
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.12);
+    color: #dff7ff;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 950;
+  }
+
+  .ad-skip.hidden {
+    display: none;
   }
 
   .ad-close {
@@ -2493,7 +2534,10 @@
     <div class="ad-shell">
       <div class="ad-head">
         <span id="adTitle">Sponsor</span>
-        <button class="ad-close" type="button" onclick="cancelSponsorAd()" aria-label="Cancel sponsor">x</button>
+        <div class="ad-actions">
+          <button id="adSkipButton" class="ad-skip hidden" type="button" onclick="skipSponsorAd()">Skip ad</button>
+          <button class="ad-close" type="button" onclick="cancelSponsorAd()" aria-label="Cancel sponsor">x</button>
+        </div>
       </div>
       <video id="sponsorVideo" class="ad-video" playsinline preload="metadata"></video>
     </div>
@@ -2626,6 +2670,9 @@
     let sponsorWatchStartedAt = 0;
     let sponsorMinimumWatchMs = 15000;
     let sponsorFinished = false;
+    let sponsorSkipTimeout = null;
+    let sponsorSkipUnlocked = false;
+    const SPONSOR_SKIP_AFTER_MS = 15000;
 
     const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const fingerprint =
@@ -2853,7 +2900,7 @@ function getAnonymousName() {
 function normalizeCreatorIdentityKey(value) {
   return String(value || "")
     .trim()
-    .replace(/^@/, "")
+    .replace(/^@+/, "")
     .replace(/[^A-Za-z0-9]/g, "")
     .toLowerCase();
 }
@@ -2907,6 +2954,10 @@ function handleMainAction() {
   }
 
   startAd();
+}
+
+function getEventEndpoint() {
+  return forceSupporterView ? "/event?view=supporter" : "/event";
 }
 
 function getCreatorSupporterProfile(profile) {
@@ -3161,6 +3212,79 @@ function setSupporterBadgeState(badges, equippedBadge, options = {}) {
 
 function renderEquippedSupporterBadge(container, badge) {
   renderSupporterBadges(container, badge ? [badge] : [], 1);
+}
+
+function getVisibleSupporterBadges(badges = [], equippedBadge = null) {
+  const visible = [];
+  const seen = new Set();
+
+  if (equippedBadge?.id) {
+    visible.push(equippedBadge);
+    seen.add(equippedBadge.id);
+  }
+
+  (Array.isArray(badges) ? badges : [])
+    .filter(badge => badge?.id && badge.unlocked !== false)
+    .forEach(badge => {
+      if (seen.has(badge.id)) return;
+      seen.add(badge.id);
+      visible.push(badge);
+    });
+
+  return visible;
+}
+
+function renderPublicSupporterBadges(container, badges = [], equippedBadge = null, limit = 3) {
+  renderSupporterBadges(
+    container,
+    getVisibleSupporterBadges(badges, equippedBadge),
+    limit
+  );
+}
+
+function getBadgeFromCatalog(badgeId) {
+  const badge = BADGE_CATALOG.find(item => item.id === badgeId);
+  return badge ? { ...badge, unlocked: true } : null;
+}
+
+function getDeepEndFallbackBadges(item, recentSupports = []) {
+  if (Array.isArray(item?.badges) && item.badges.length) {
+    return item.badges;
+  }
+
+  const anonId = String(item?.anonId || "").trim();
+  const badges = [];
+
+  const addBadge = badgeId => {
+    const badge = getBadgeFromCatalog(badgeId);
+    if (badge && !badges.some(existing => existing.id === badge.id)) {
+      badges.push(badge);
+    }
+  };
+
+  if (anonId || item?.time) {
+    addBadge("first_drop");
+    addBadge("og_wave");
+  }
+
+  if (anonId && Array.isArray(recentSupports)) {
+    const firstFiveSupporters = [];
+
+    [...recentSupports]
+      .sort((a, b) => Number(a.time || 0) - Number(b.time || 0))
+      .forEach(support => {
+        const key = String(support?.anonId || "").trim();
+        if (key && !firstFiveSupporters.includes(key)) {
+          firstFiveSupporters.push(key);
+        }
+      });
+
+    if (firstFiveSupporters.slice(0, 5).includes(anonId)) {
+      addBadge("day_one");
+    }
+  }
+
+  return badges;
 }
 
 function getSelectedSupporterBadge() {
@@ -4157,7 +4281,8 @@ function addSupportToFeed(
   pfp = "",
   reactionType = "emoji",
   stickerUrl = "",
-  equippedBadge = null
+  equippedBadge = null,
+  badges = []
 ) {
   const feed = document.getElementById("liveFeed");
   if (!feed) return;
@@ -4187,7 +4312,7 @@ function addSupportToFeed(
 
   const badgeStrip = document.createElement("span");
   badgeStrip.className = "badge-strip";
-  renderEquippedSupporterBadge(badgeStrip, equippedBadge);
+  renderPublicSupporterBadges(badgeStrip, badges, equippedBadge);
 
   const message = document.createElement("span");
   renderSupportReaction(message, emoji, reactionType, stickerUrl);
@@ -4655,7 +4780,8 @@ body: JSON.stringify({
         getCurrentSupporterPfp(),
         "emoji",
         "",
-        equippedSupporterBadge
+        equippedSupporterBadge,
+        supporterBadgeCollection
       );
 
       showReactionPicker(supporterCreatorSupports);
@@ -4696,6 +4822,11 @@ body: JSON.stringify({
       const video = document.getElementById("sponsorVideo");
 
       clearTimeout(completionTimeout);
+      clearTimeout(sponsorSkipTimeout);
+      sponsorSkipTimeout = null;
+      sponsorSkipUnlocked = false;
+      const skipButton = document.getElementById("adSkipButton");
+      if (skipButton) skipButton.classList.add("hidden");
 
       if (video) {
         video.pause();
@@ -4705,6 +4836,7 @@ body: JSON.stringify({
         video.onerror = null;
         video.onloadedmetadata = null;
         video.onplaying = null;
+        video.ontimeupdate = null;
         video.onclick = null;
       }
 
@@ -4725,28 +4857,58 @@ body: JSON.stringify({
       }, 15000);
     }
 
-    function finishSponsorVideo(btn) {
+    function resetSponsorSkipButton() {
+      clearTimeout(sponsorSkipTimeout);
+      sponsorSkipTimeout = null;
+      sponsorSkipUnlocked = false;
+
+      const skipButton = document.getElementById("adSkipButton");
+      if (skipButton) skipButton.classList.add("hidden");
+    }
+
+    function unlockSponsorSkipButton() {
+      if (sponsorFinished || sponsorSkipUnlocked) return;
+
+      sponsorSkipUnlocked = true;
+      const skipButton = document.getElementById("adSkipButton");
+      if (skipButton) skipButton.classList.remove("hidden");
+    }
+
+    function scheduleSponsorSkipButton() {
+      clearTimeout(sponsorSkipTimeout);
+      sponsorSkipTimeout = setTimeout(unlockSponsorSkipButton, SPONSOR_SKIP_AFTER_MS);
+    }
+
+    function finishSponsorVideo(btn, skipNow = false) {
       if (sponsorFinished) return;
       sponsorFinished = true;
 
       if (!sponsorWatchStartedAt) sponsorWatchStartedAt = Date.now();
 
       const elapsed = Date.now() - sponsorWatchStartedAt;
-      const remaining = Math.max(0, sponsorMinimumWatchMs - elapsed);
+      const remaining = skipNow ? 0 : Math.max(0, sponsorMinimumWatchMs - elapsed);
 
       setStatus("Sending support...");
 
       clearTimeout(completionTimeout);
+      clearTimeout(sponsorSkipTimeout);
       completionTimeout = setTimeout(() => {
         hideSponsorAd();
         completeAd(btn);
       }, remaining);
     }
 
+    function skipSponsorAd() {
+      if (!adInProgress || !sponsorSkipUnlocked) return;
+
+      finishSponsorVideo(activeSponsorButton, true);
+    }
+
     async function playSponsorVideo(btn) {
       activeSponsorButton = btn;
       sponsorFinished = false;
       sponsorWatchStartedAt = 0;
+      resetSponsorSkipButton();
 
       let adData;
 
@@ -4800,6 +4962,12 @@ body: JSON.stringify({
         sponsorWatchStartedAt = Date.now();
         setStatus("Watching sponsor...");
         startProgressBar(sponsorMinimumWatchMs);
+        scheduleSponsorSkipButton();
+      };
+      video.ontimeupdate = () => {
+        if (Number(video.currentTime || 0) >= SPONSOR_SKIP_AFTER_MS / 1000) {
+          unlockSponsorSkipButton();
+        }
       };
       video.onended = () => finishSponsorVideo(btn);
       video.onerror = () => {
@@ -4855,7 +5023,11 @@ body: JSON.stringify({
     if (feed) {
       feed.innerHTML = "";
 
-      (data.recentSupports || []).reverse().forEach(item => {
+      const recentSupports = Array.isArray(data.recentSupports)
+        ? data.recentSupports
+        : [];
+
+      recentSupports.reverse().forEach(item => {
         addSupportToFeed(
           item.name,
           item.time,
@@ -4863,7 +5035,8 @@ body: JSON.stringify({
           item.pfp,
           item.reactionType,
           item.stickerUrl,
-          item.equippedBadge
+          item.equippedBadge,
+          getDeepEndFallbackBadges(item, recentSupports)
         );
       });
     }
@@ -4892,8 +5065,9 @@ body: JSON.stringify({
   btn.disabled = true;
 
   try {
-    const startRes = await fetch("/event", {
+    const startRes = await fetch(getEventEndpoint(), {
       method: "POST",
+      credentials: forceSupporterView ? "omit" : "same-origin",
       headers: {
         "Content-Type": "application/json"
       },
@@ -4903,6 +5077,7 @@ body: JSON.stringify({
         fingerprint,
         anonId,
         timeZone: userTimeZone,
+        supporterView: forceSupporterView,
         videoId,
         videoTitle,
         videoThumbnail,
@@ -5151,8 +5326,9 @@ body: JSON.stringify({
     adInProgress = false;
     setStatus("Sending support...");
 
-    const completeRes = await fetch("/event", {
+    const completeRes = await fetch(getEventEndpoint(), {
       method: "POST",
+      credentials: forceSupporterView ? "omit" : "same-origin",
       headers: {
         "Content-Type": "application/json"
       },
@@ -5162,6 +5338,7 @@ body: JSON.stringify({
         fingerprint,
         anonId,
         timeZone: userTimeZone,
+        supporterView: forceSupporterView,
 
         supporterName:
           serverHasSupporterProfile ? supporterProfile?.name || "" : "",
