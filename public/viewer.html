@@ -4934,7 +4934,7 @@ body: JSON.stringify({
       }
 
       const ad = adData.ad;
-      const sponsorClickUrl = adData.clickUrl || SPONSOR_CLICK_URL;
+      const sponsorClickUrl = ad.clickUrl || adData.clickUrl || SPONSOR_CLICK_URL;
       sponsorMinimumWatchMs = Number(adData.minimumWatchMs || 15000);
 
       if (!ad || !ad.url) {

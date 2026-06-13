@@ -39,5 +39,13 @@ test("browser debug logs are not leaking profile or response details", () => {
 test("sponsor video clicks open the tracking link while playing", () => {
   assert.match(viewer, /SPONSOR_CLICK_URL\s*=\s*"https:\/\/www\.tiktok\.com\/t\/ZP9jBjs2Xf1dD-8YB63\/"/);
   assert.match(viewer, /function openSponsorClickUrl/);
+  assert.match(viewer, /ad\.clickUrl\s*\|\|\s*adData\.clickUrl\s*\|\|\s*SPONSOR_CLICK_URL/);
   assert.match(viewer, /window\.open\(clickUrl,\s*"_blank"/);
+});
+
+test("sponsor ads have file-specific tracking links", () => {
+  assert.ok(fs.existsSync("public/ads/14edef0cbf8a2d40565eb5af393e1aad.mp4"));
+  assert.match(server, /"1000004233\.mp4":\s*"https:\/\/www\.tiktok\.com\/t\/ZP9jBjs2Xf1dD-8YB63\/"/);
+  assert.match(server, /"14edef0cbf8a2d40565eb5af393e1aad\.mp4":\s*"https:\/\/www\.tiktok\.com\/t\/ZP8sHtRG3\/"/);
+  assert.match(server, /clickUrl:\s*SPONSOR_AD_CLICK_URLS\[file\]\s*\|\|\s*DEFAULT_SPONSOR_CLICK_URL/);
 });
