@@ -64,6 +64,18 @@ test("sponsor ads have file-specific tracking links", () => {
   assert.match(server, /clickUrl:\s*SPONSOR_AD_CLICK_URLS\[file\]\s*\|\|\s*DEFAULT_SPONSOR_CLICK_URL/);
 });
 
+test("mobile sticker rendering avoids heavy simultaneous previews", () => {
+  assert.match(viewer, /const stickerAssetVersion = "2026-06-24"/);
+  assert.doesNotMatch(viewer, /const stickerAssetVersion = Date\.now/);
+  assert.match(viewer, /function isLowPowerStickerMode/);
+  assert.match(viewer, /function destroyStickerCanvases/);
+  assert.match(viewer, /function createStickerPreviewPlaceholder/);
+  assert.match(viewer, /const targetFrameMs = lowPower \? 1000 \/ 12 : 0/);
+  assert.match(viewer, /lowPower\s*\?\s*createStickerPreviewPlaceholder/);
+  assert.match(viewer, /clearStickerContainer\(stickerRow\)/);
+  assert.match(viewer, /hideReactionPicker\(\)/);
+});
+
 test("privacy and terms pages are routed and linked", () => {
   assert.match(server, /app\.get\("\/privacy"/);
   assert.match(server, /app\.get\("\/terms"/);

@@ -2033,6 +2033,26 @@
   filter: none;
 }
 
+.sticker-preview-placeholder {
+  display: grid;
+  place-items: center;
+  width: min(160px, 100%);
+  height: min(160px, 42vw);
+  min-height: 118px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 225, 135, 0.28);
+  background:
+    radial-gradient(circle at 50% 36%, rgba(255, 225, 135, 0.22), transparent 42%),
+    linear-gradient(135deg, rgba(56, 189, 248, 0.14), rgba(255, 217, 117, 0.16)),
+    rgba(255,255,255,0.06);
+  color: #fff8df;
+  text-align: center;
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.15;
+}
+
 .sticker-btn.first-sticker .sticker-preview-canvas {
   transform: scale(1.16);
   transform-origin: center;
@@ -2749,7 +2769,9 @@ let removeSupporterPfp = false;
 let selectedSupporterPfpPreview = "";
 let stickerVideos = [];
 let stickerVideosLoaded = false;
-const stickerAssetVersion = Date.now();
+const stickerAssetVersion = "2026-06-24";
+const LOW_POWER_STICKER_QUERY =
+  "(max-width: 760px), (pointer: coarse), (prefers-reduced-motion: reduce)";
 const SUPPORTER_STORAGE_SCOPE = String(anonId || "anonymous");
 const BADGE_UNREAD_STORAGE_KEY = `unreadSupporterBadgeIds:${SUPPORTER_STORAGE_SCOPE}`;
 const BADGE_KNOWN_STORAGE_KEY = `knownUnlockedSupporterBadgeIds:${SUPPORTER_STORAGE_SCOPE}`;
@@ -2800,6 +2822,56 @@ function getStickerAssetUrl(src) {
 
   const separator = src.includes("?") ? "&" : "?";
   return `${src}${separator}sticker_v=${stickerAssetVersion}`;
+}
+
+function isLowPowerStickerMode() {
+  const lowPowerQuery = window.matchMedia
+    ? window.matchMedia(LOW_POWER_STICKER_QUERY)
+    : null;
+
+  return Boolean(lowPowerQuery?.matches);
+}
+
+function cleanupStickerCanvas(canvas) {
+  if (!canvas) return;
+
+  if (typeof canvas._stickerCleanup === "function") {
+    canvas._stickerCleanup();
+    return;
+  }
+
+  if (canvas._stickerFrameId) {
+    cancelAnimationFrame(canvas._stickerFrameId);
+  }
+
+  const video = canvas._stickerVideo;
+  if (video) {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  }
+}
+
+function destroyStickerCanvases(root) {
+  if (!root?.querySelectorAll) return;
+
+  root
+    .querySelectorAll(".sticker-preview-canvas, .feed-sticker-canvas")
+    .forEach(cleanupStickerCanvas);
+}
+
+function clearStickerContainer(el) {
+  if (!el) return;
+
+  destroyStickerCanvases(el);
+  el.innerHTML = "";
+}
+
+function createStickerPreviewPlaceholder(sticker) {
+  const placeholder = document.createElement("div");
+  placeholder.className = "sticker-preview-placeholder";
+  placeholder.innerText = sticker?.title || "Sticker";
+  return placeholder;
 }
 
 const videoId = params.get("video") || "main";
@@ -4056,16 +4128,20 @@ function removeStickerBlackEdge(pixels, width, height) {
   }
 }
 
-function createKeyedStickerCanvas(src, className) {
+function createKeyedStickerCanvas(src, className, options = {}) {
+  const lowPower = options.lowPower ?? isLowPowerStickerMode();
+  const canvasSize = lowPower ? 132 : 220;
+  const sampleWidth = lowPower ? 168 : 320;
+  const targetFrameMs = lowPower ? 1000 / 12 : 0;
   const canvas = document.createElement("canvas");
   canvas.className = className;
-  canvas.width = 220;
-  canvas.height = 220;
+  canvas.width = canvasSize;
+  canvas.height = canvasSize;
 
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const sample = document.createElement("canvas");
-  sample.width = 320;
-  sample.height = 180;
+  sample.width = sampleWidth;
+  sample.height = Math.round(sampleWidth * 0.5625);
   const sampleCtx = sample.getContext("2d", { willReadFrequently: true });
 
   const video = document.createElement("video");
@@ -4074,11 +4150,12 @@ function createKeyedStickerCanvas(src, className) {
   video.loop = false;
   video.autoplay = true;
   video.playsInline = true;
-  video.preload = "auto";
+  video.preload = lowPower ? "metadata" : "auto";
   video.style.display = "none";
 
   let frameId = 0;
   let isDrawing = false;
+  let lastFrameAt = 0;
   let stableCrop = null;
   let stableKeyMode = null;
   const loopStart = 0.04;
@@ -4112,9 +4189,22 @@ function createKeyedStickerCanvas(src, className) {
     }
   }
 
-  function drawStickerFrame() {
+  function drawStickerFrame(timestamp = 0) {
+    if (
+      targetFrameMs &&
+      lastFrameAt &&
+      timestamp - lastFrameAt < targetFrameMs
+    ) {
+      frameId = requestAnimationFrame(drawStickerFrame);
+      canvas._stickerFrameId = frameId;
+      return;
+    }
+
+    lastFrameAt = timestamp;
+
     if (!video.videoWidth || !video.videoHeight) {
       frameId = requestAnimationFrame(drawStickerFrame);
+      canvas._stickerFrameId = frameId;
       return;
     }
 
@@ -4242,6 +4332,7 @@ function createKeyedStickerCanvas(src, className) {
     }
     ctx.putImageData(output, 0, 0);
     frameId = requestAnimationFrame(drawStickerFrame);
+    canvas._stickerFrameId = frameId;
   }
 
   function startStickerDrawing() {
@@ -4266,7 +4357,15 @@ function createKeyedStickerCanvas(src, className) {
     canvas.classList.add("hidden");
   });
 
-  canvas.addEventListener("remove", () => cancelAnimationFrame(frameId));
+  canvas._stickerCleanup = () => {
+    cancelAnimationFrame(frameId);
+    isDrawing = false;
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    canvas._stickerCleanup = null;
+  };
+  canvas.addEventListener("remove", canvas._stickerCleanup);
   canvas._stickerVideo = video;
   canvas._stickerFrameId = frameId;
   video.play().catch(() => {});
@@ -4277,7 +4376,7 @@ function createKeyedStickerCanvas(src, className) {
 function renderSupportReaction(el, reaction, reactionType = "emoji", stickerUrl = "") {
   if (!el) return;
 
-  el.innerHTML = "";
+  clearStickerContainer(el);
   el.className = "support-message";
 
   if (reactionType === "sticker") {
@@ -4370,6 +4469,7 @@ async function sendReaction(reaction, reactionType = "emoji", stickerUrl = "") {
   if (!message) return;
 
   renderSupportReaction(message, reaction, reactionType, stickerUrl);
+  hideReactionPicker();
 
   await fetch("/support/emoji", {
     method: "POST",
@@ -4383,7 +4483,6 @@ async function sendReaction(reaction, reactionType = "emoji", stickerUrl = "") {
     })
   });
 
-  document.getElementById("emojiPicker").classList.add("hidden");
 }
 
 function sendEmoji(emoji) {
@@ -4399,6 +4498,10 @@ function sendSticker(sticker) {
 }
 
 async function loadStickerVideos() {
+  if (stickerVideosLoaded) {
+    return stickerVideos;
+  }
+
   try {
     const res = await fetch(`/api/stickers?t=${Date.now()}`);
     const data = await res.json();
@@ -4412,12 +4515,26 @@ async function loadStickerVideos() {
   return stickerVideos;
 }
 
+function hideReactionPicker() {
+  const picker = document.getElementById("emojiPicker");
+  const stickerRow = document.getElementById("stickerRow");
+
+  if (stickerRow) {
+    destroyStickerCanvases(stickerRow);
+  }
+
+  if (picker) {
+    picker.classList.add("hidden");
+  }
+}
+
 function renderStickerButtons(stickers, lockedSupportsLeft = 0) {
   const stickerRow = document.getElementById("stickerRow");
   if (!stickerRow) return;
 
-  stickerRow.innerHTML = "";
+  clearStickerContainer(stickerRow);
   const isLocked = lockedSupportsLeft > 0;
+  const lowPower = isLowPowerStickerMode();
 
   const options = stickers.length
     ? stickers
@@ -4438,7 +4555,11 @@ function renderStickerButtons(stickers, lockedSupportsLeft = 0) {
 
     if (sticker.url) {
       button.appendChild(
-        createKeyedStickerCanvas(sticker.url, "sticker-preview-canvas")
+        lowPower
+          ? createStickerPreviewPlaceholder(sticker)
+          : createKeyedStickerCanvas(sticker.url, "sticker-preview-canvas", {
+              lowPower: false
+            })
       );
     }
 
@@ -5064,7 +5185,7 @@ body: JSON.stringify({
     const feed = document.getElementById("liveFeed");
 
     if (feed) {
-      feed.innerHTML = "";
+      clearStickerContainer(feed);
 
       const recentSupports = Array.isArray(data.recentSupports)
         ? data.recentSupports
