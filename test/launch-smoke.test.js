@@ -112,15 +112,22 @@ test("mobile sticker rendering avoids heavy simultaneous previews", () => {
   assert.match(viewer, /function isLowPowerStickerMode/);
   assert.match(viewer, /function shouldUseLightweightWishAnimation/);
   assert.match(viewer, /function playLightweightWishAnimation/);
-  assert.match(viewer, /quick-wish/);
+  assert.match(viewer, /quick-wish-toast/);
   assert.match(viewer, /function destroyStickerCanvases/);
+  assert.match(viewer, /function createNativeStickerVideo/);
   assert.match(viewer, /function createStickerPreviewPlaceholder/);
   assert.match(viewer, /const targetFrameMs = lowPower \? 1000 \/ 12 : 0/);
-  assert.match(viewer, /lowPower\s*\?\s*createStickerPreviewPlaceholder/);
-  assert.match(viewer, /feed-sticker-placeholder/);
+  assert.match(viewer, /lowPower\s*\?\s*createNativeStickerVideo/);
+  assert.match(viewer, /createNativeStickerVideo\(stickerUrl,\s*"feed-sticker-video"\)/);
   assert.match(server, /Sticker \$\{index \+ 1\}/);
   assert.match(viewer, /clearStickerContainer\(stickerRow\)/);
   assert.match(viewer, /hideReactionPicker\(\)/);
+});
+
+test("single video attribution is saved without prompting", () => {
+  assert.match(viewer, /attributionVideos\.length === 1/);
+  assert.match(viewer, /submitVideoAttribution\("selected_video", attributionVideos\[0\]\.id, \{ silent: true \}\)/);
+  assert.match(viewer, /submitVideoAttribution\("skipped", "", \{ silent: true \}\)/);
 });
 
 test("privacy and terms pages are routed and linked", () => {

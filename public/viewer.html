@@ -2194,6 +2194,45 @@
   letter-spacing: 0;
 }
 
+.quick-wish-toast {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  z-index: 10000;
+  min-width: min(84vw, 340px);
+  transform: translate(-50%, -50%) scale(0.96);
+  padding: 18px 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 225, 135, 0.28);
+  background:
+    radial-gradient(circle at 50% 10%, rgba(255, 225, 135, 0.18), transparent 58%),
+    rgba(8, 14, 30, 0.96);
+  color: #fff8df;
+  box-shadow: 0 22px 70px rgba(0,0,0,0.42);
+  text-align: center;
+  font-size: clamp(28px, 8vw, 40px);
+  font-weight: 950;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  animation: quickWishToast 1.25s ease forwards;
+}
+
+@keyframes quickWishToast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  18%, 76% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -52%) scale(1.03);
+  }
+}
+
 .sticker-btn.first-sticker .sticker-preview-canvas {
   transform: scale(1.16);
   transform-origin: center;
@@ -3078,12 +3117,23 @@ function cleanupStickerCanvas(canvas) {
   }
 }
 
+function cleanupNativeStickerVideo(video) {
+  if (!video) return;
+
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+}
+
 function destroyStickerCanvases(root) {
   if (!root?.querySelectorAll) return;
 
   root
     .querySelectorAll(".sticker-preview-canvas, .feed-sticker-canvas")
     .forEach(cleanupStickerCanvas);
+  root
+    .querySelectorAll(".sticker-native-video, .feed-sticker-video")
+    .forEach(cleanupNativeStickerVideo);
 }
 
 function clearStickerContainer(el) {
@@ -3098,6 +3148,29 @@ function createStickerPreviewPlaceholder(sticker, index = 0) {
   placeholder.className = "sticker-preview-placeholder";
   placeholder.innerText = sticker?.displayTitle || `Sticker ${index + 1}`;
   return placeholder;
+}
+
+function createNativeStickerVideo(src, className) {
+  const video = document.createElement("video");
+  video.className = className;
+  video.src = getStickerAssetUrl(src);
+  video.muted = true;
+  video.loop = true;
+  video.autoplay = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  video.setAttribute("aria-hidden", "true");
+
+  video.addEventListener("loadeddata", () => {
+    if (Number.isFinite(video.duration) && video.duration > 0.08) {
+      try {
+        video.currentTime = 0.04;
+      } catch (_) {}
+    }
+    video.play().catch(() => {});
+  });
+
+  return video;
 }
 
 const videoId = params.get("video") || "main";
@@ -4611,10 +4684,7 @@ function renderSupportReaction(el, reaction, reactionType = "emoji", stickerUrl 
 
     if (stickerUrl) {
       if (isLowPowerStickerMode()) {
-        const placeholder = document.createElement("div");
-        placeholder.className = "feed-sticker-placeholder";
-        placeholder.innerText = reaction || "Sticker";
-        el.appendChild(placeholder);
+        el.appendChild(createNativeStickerVideo(stickerUrl, "feed-sticker-video"));
       } else {
         el.appendChild(createKeyedStickerCanvas(stickerUrl, "feed-sticker-canvas"));
       }
@@ -4792,7 +4862,7 @@ function renderStickerButtons(stickers, lockedSupportsLeft = 0) {
     if (sticker.url) {
       button.appendChild(
         lowPower
-          ? createStickerPreviewPlaceholder(sticker, index)
+          ? createNativeStickerVideo(sticker.url, "sticker-native-video")
           : createKeyedStickerCanvas(sticker.url, "sticker-preview-canvas", {
               lowPower: false
             })
@@ -5227,6 +5297,16 @@ body: JSON.stringify({
         attributionVideos = [];
       }
 
+      if (attributionVideos.length === 1) {
+        await submitVideoAttribution("selected_video", attributionVideos[0].id, { silent: true });
+        return;
+      }
+
+      if (!attributionVideos.length) {
+        await submitVideoAttribution("skipped", "", { silent: true });
+        return;
+      }
+
       renderVideoAttributionOptions();
 
       if (modal) {
@@ -5255,14 +5335,14 @@ body: JSON.stringify({
       renderVideoAttributionOptions();
     }
 
-    async function submitVideoAttribution(attributionType, selectedVideoId = "") {
+    async function submitVideoAttribution(attributionType, selectedVideoId = "", options = {}) {
       if (!pendingAttributionSupport) {
         hideVideoAttributionPrompt();
         return;
       }
 
       const note = document.getElementById("videoAttributionNote");
-      if (note) note.innerText = "Saving...";
+      if (note && !options.silent) note.innerText = "Saving...";
 
       try {
         const res = await fetch("/support/attribute-video", {
@@ -5288,6 +5368,11 @@ body: JSON.stringify({
 
         hideVideoAttributionPrompt();
       } catch (err) {
+        if (options.silent) {
+          pendingAttributionSupport = null;
+          return;
+        }
+
         if (note) note.innerText = err.message || "Could not save selection.";
       }
     }
@@ -5353,50 +5438,15 @@ body: JSON.stringify({
     }
 
     function playLightweightWishAnimation(onDone) {
-      const overlay = document.getElementById("wishOverlay");
-      const title = document.getElementById("wishTitle");
-      const glow = document.getElementById("wishGlow");
-
-      if (!overlay || !title || !glow) {
-        if (typeof onDone === "function") onDone();
-        return;
-      }
-
-      overlay.classList.add("quick-wish");
-      overlay.classList.remove("hidden");
-      overlay.style.transition = "opacity 160ms ease";
-      overlay.style.opacity = "0";
-
-      title.innerText = "Make a wish";
-      title.style.transition = "opacity 180ms ease, transform 240ms ease";
-      title.style.opacity = "0";
-      title.style.transform = "translate(-50%, -50%) scale(0.96)";
-
-      glow.style.transition = "opacity 220ms ease, transform 260ms ease";
-      glow.style.opacity = "0";
-      glow.style.transform = "scale(0.9)";
-
-      requestAnimationFrame(() => {
-        overlay.style.opacity = "1";
-        title.style.opacity = "1";
-        title.style.transform = "translate(-50%, -50%) scale(1)";
-        glow.style.opacity = "1";
-        glow.style.transform = "scale(1)";
-      });
+      const toast = document.createElement("div");
+      toast.className = "quick-wish-toast";
+      toast.innerText = "Make a wish";
+      document.body.appendChild(toast);
 
       setTimeout(() => {
-        overlay.style.opacity = "0";
-      }, 760);
-
-      setTimeout(() => {
-        overlay.classList.add("hidden");
-        overlay.classList.remove("quick-wish");
-        overlay.style.removeProperty("transition");
-        title.style.removeProperty("transition");
-        glow.style.removeProperty("transition");
-
+        toast.remove();
         if (typeof onDone === "function") onDone();
-      }, 980);
+      }, 1250);
     }
 
     let glowTimer = null;
