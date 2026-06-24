@@ -2199,8 +2199,11 @@
   left: 50%;
   top: 42%;
   z-index: 10000;
-  min-width: min(84vw, 340px);
+  width: min(84vw, 360px);
+  height: 220px;
   transform: translate(-50%, -50%) scale(0.96);
+  display: grid;
+  place-items: center;
   padding: 18px 20px;
   border-radius: 24px;
   border: 1px solid rgba(255, 225, 135, 0.28);
@@ -2210,13 +2213,66 @@
   color: #fff8df;
   box-shadow: 0 22px 70px rgba(0,0,0,0.42);
   text-align: center;
-  font-size: clamp(28px, 8vw, 40px);
-  font-weight: 950;
-  line-height: 1;
   opacity: 0;
   pointer-events: none;
   animation: quickWishToast 1.25s ease forwards;
 }
+
+.quick-wish-text {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 24px;
+  font-size: clamp(27px, 7.4vw, 38px);
+  font-weight: 950;
+  line-height: 1;
+  animation: quickWishText 1.25s ease forwards;
+}
+
+.quick-wish-coin {
+  position: absolute;
+  left: 50%;
+  top: 24px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, #fff7c7 0 14%, #ffd66b 15% 54%, #c47a1b 55% 100%);
+  border: 2px solid rgba(255, 247, 199, 0.8);
+  transform: translate(-50%, 0) scale(0.7);
+  animation: quickWishCoin 1.25s cubic-bezier(.2, .74, .26, 1) forwards;
+}
+
+.quick-wish-ripple {
+  position: absolute;
+  left: 50%;
+  top: 118px;
+  width: 82px;
+  height: 24px;
+  border: 2px solid rgba(125, 211, 252, 0.72);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0.25);
+  opacity: 0;
+  animation: quickWishRipple 1.25s ease forwards;
+}
+
+.quick-wish-spark {
+  position: absolute;
+  left: 50%;
+  top: 116px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fff7c7;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.5);
+  animation: quickWishSpark 1.25s ease forwards;
+}
+
+.quick-wish-spark:nth-child(1) { --spark-x: -82px; --spark-y: -38px; }
+.quick-wish-spark:nth-child(2) { --spark-x: 76px; --spark-y: -30px; }
+.quick-wish-spark:nth-child(3) { --spark-x: -54px; --spark-y: 34px; }
+.quick-wish-spark:nth-child(4) { --spark-x: 58px; --spark-y: 30px; }
 
 @keyframes quickWishToast {
   0% {
@@ -2230,6 +2286,67 @@
   100% {
     opacity: 0;
     transform: translate(-50%, -52%) scale(1.03);
+  }
+}
+
+@keyframes quickWishCoin {
+  0% {
+    transform: translate(-50%, -34px) scale(0.7) rotate(-18deg);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  58% {
+    transform: translate(-50%, 84px) scale(1) rotate(18deg);
+    opacity: 1;
+  }
+  70%, 100% {
+    transform: translate(-50%, 88px) scale(0.22) rotate(35deg);
+    opacity: 0;
+  }
+}
+
+@keyframes quickWishRipple {
+  0%, 42% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+  58% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.2);
+  }
+}
+
+@keyframes quickWishText {
+  0%, 18% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  38%, 82% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes quickWishSpark {
+  0%, 50% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  66% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--spark-x)), calc(-50% + var(--spark-y))) scale(1);
   }
 }
 
@@ -4432,7 +4549,8 @@ function createKeyedStickerCanvas(src, className, options = {}) {
   const lowPower = options.lowPower ?? isLowPowerStickerMode();
   const canvasSize = lowPower ? 132 : 220;
   const sampleWidth = lowPower ? 168 : 320;
-  const targetFrameMs = lowPower ? 1000 / 12 : 0;
+  const targetFrameMs = options.targetFrameMs ?? (lowPower ? 1000 / 12 : 0);
+  const pauseWhenHidden = options.pauseWhenHidden ?? lowPower;
   const canvas = document.createElement("canvas");
   canvas.className = className;
   canvas.width = canvasSize;
@@ -4458,6 +4576,8 @@ function createKeyedStickerCanvas(src, className, options = {}) {
   let lastFrameAt = 0;
   let stableCrop = null;
   let stableKeyMode = null;
+  let isCanvasVisible = !pauseWhenHidden;
+  let visibilityObserver = null;
   const loopStart = 0.04;
   const loopEndPadding = 0.18;
 
@@ -4490,6 +4610,11 @@ function createKeyedStickerCanvas(src, className, options = {}) {
   }
 
   function drawStickerFrame(timestamp = 0) {
+    if (document.hidden || (pauseWhenHidden && !isCanvasVisible)) {
+      isDrawing = false;
+      return;
+    }
+
     if (
       targetFrameMs &&
       lastFrameAt &&
@@ -4637,8 +4762,23 @@ function createKeyedStickerCanvas(src, className, options = {}) {
 
   function startStickerDrawing() {
     if (isDrawing) return;
+    if (document.hidden || (pauseWhenHidden && !isCanvasVisible)) return;
     isDrawing = true;
     drawStickerFrame();
+  }
+
+  function handleDocumentVisibility() {
+    if (document.hidden) {
+      cancelAnimationFrame(frameId);
+      isDrawing = false;
+      video.pause();
+      return;
+    }
+
+    if (!pauseWhenHidden || isCanvasVisible) {
+      video.play().catch(() => {});
+      startStickerDrawing();
+    }
   }
 
   video.addEventListener("play", startStickerDrawing);
@@ -4657,9 +4797,32 @@ function createKeyedStickerCanvas(src, className, options = {}) {
     canvas.classList.add("hidden");
   });
 
+  if (pauseWhenHidden && "IntersectionObserver" in window) {
+    visibilityObserver = new IntersectionObserver(entries => {
+      const entry = entries[0];
+      isCanvasVisible = Boolean(entry?.isIntersecting);
+
+      if (isCanvasVisible) {
+        video.play().catch(() => {});
+        startStickerDrawing();
+      } else {
+        cancelAnimationFrame(frameId);
+        isDrawing = false;
+        video.pause();
+      }
+    }, { rootMargin: "120px" });
+    visibilityObserver.observe(canvas);
+  } else {
+    isCanvasVisible = true;
+  }
+
+  document.addEventListener("visibilitychange", handleDocumentVisibility);
+
   canvas._stickerCleanup = () => {
     cancelAnimationFrame(frameId);
     isDrawing = false;
+    visibilityObserver?.disconnect();
+    document.removeEventListener("visibilitychange", handleDocumentVisibility);
     video.pause();
     video.removeAttribute("src");
     video.load();
@@ -4683,11 +4846,10 @@ function renderSupportReaction(el, reaction, reactionType = "emoji", stickerUrl 
     el.classList.add("sticker-message");
 
     if (stickerUrl) {
-      if (isLowPowerStickerMode()) {
-        el.appendChild(createNativeStickerVideo(stickerUrl, "feed-sticker-video"));
-      } else {
-        el.appendChild(createKeyedStickerCanvas(stickerUrl, "feed-sticker-canvas"));
-      }
+      el.appendChild(createKeyedStickerCanvas(stickerUrl, "feed-sticker-canvas", {
+        lowPower: isLowPowerStickerMode(),
+        pauseWhenHidden: true
+      }));
       return;
     }
 
@@ -4860,13 +5022,10 @@ function renderStickerButtons(stickers, lockedSupportsLeft = 0) {
     button.disabled = isLocked;
 
     if (sticker.url) {
-      button.appendChild(
-        lowPower
-          ? createNativeStickerVideo(sticker.url, "sticker-native-video")
-          : createKeyedStickerCanvas(sticker.url, "sticker-preview-canvas", {
-              lowPower: false
-            })
-      );
+      button.appendChild(createKeyedStickerCanvas(sticker.url, "sticker-preview-canvas", {
+        lowPower,
+        pauseWhenHidden: true
+      }));
     }
 
     if (!sticker.url) {
@@ -5440,7 +5599,26 @@ body: JSON.stringify({
     function playLightweightWishAnimation(onDone) {
       const toast = document.createElement("div");
       toast.className = "quick-wish-toast";
-      toast.innerText = "Make a wish";
+
+      for (let i = 0; i < 4; i++) {
+        const spark = document.createElement("span");
+        spark.className = "quick-wish-spark";
+        toast.appendChild(spark);
+      }
+
+      const coin = document.createElement("span");
+      coin.className = "quick-wish-coin";
+      toast.appendChild(coin);
+
+      const ripple = document.createElement("span");
+      ripple.className = "quick-wish-ripple";
+      toast.appendChild(ripple);
+
+      const text = document.createElement("span");
+      text.className = "quick-wish-text";
+      text.innerText = "Make a wish";
+      toast.appendChild(text);
+
       document.body.appendChild(toast);
 
       setTimeout(() => {

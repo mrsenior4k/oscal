@@ -55,6 +55,8 @@ test("creator login entrypoint is platform neutral", () => {
 test("dashboard shows dated support activity and platform video attribution controls", () => {
   assert.match(dashboard, /function formatSupportTimestamp/);
   assert.doesNotMatch(dashboard, /toLocaleTimeString/);
+  assert.match(dashboard, /max-height:\s*min\(560px,\s*58vh\)/);
+  assert.match(dashboard, /overflow-y:\s*auto/);
   assert.match(dashboard, /Your platform links/);
   assert.match(dashboard, /Where supporters came from/);
   assert.match(dashboard, /Eligible videos/);
@@ -113,12 +115,16 @@ test("mobile sticker rendering avoids heavy simultaneous previews", () => {
   assert.match(viewer, /function shouldUseLightweightWishAnimation/);
   assert.match(viewer, /function playLightweightWishAnimation/);
   assert.match(viewer, /quick-wish-toast/);
+  assert.match(viewer, /quick-wish-coin/);
+  assert.match(viewer, /quick-wish-ripple/);
   assert.match(viewer, /function destroyStickerCanvases/);
-  assert.match(viewer, /function createNativeStickerVideo/);
   assert.match(viewer, /function createStickerPreviewPlaceholder/);
-  assert.match(viewer, /const targetFrameMs = lowPower \? 1000 \/ 12 : 0/);
-  assert.match(viewer, /lowPower\s*\?\s*createNativeStickerVideo/);
-  assert.match(viewer, /createNativeStickerVideo\(stickerUrl,\s*"feed-sticker-video"\)/);
+  assert.match(viewer, /const targetFrameMs = options\.targetFrameMs \?\? \(lowPower \? 1000 \/ 12 : 0\)/);
+  assert.match(viewer, /pauseWhenHidden/);
+  assert.match(viewer, /IntersectionObserver/);
+  assert.match(viewer, /createKeyedStickerCanvas\(stickerUrl,\s*"feed-sticker-canvas"/);
+  assert.match(viewer, /createKeyedStickerCanvas\(sticker\.url,\s*"sticker-preview-canvas"/);
+  assert.doesNotMatch(viewer, /lowPower\s*\?\s*createNativeStickerVideo/);
   assert.match(server, /Sticker \$\{index \+ 1\}/);
   assert.match(viewer, /clearStickerContainer\(stickerRow\)/);
   assert.match(viewer, /hideReactionPicker\(\)/);
