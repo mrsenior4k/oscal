@@ -406,6 +406,7 @@ function resolveSqlitePath() {
 
 const DB_PATH = resolveSqlitePath();
 const DATA_DIR = path.dirname(DB_PATH);
+const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const hasConfiguredPersistentStore = Boolean(
   process.env.DATA_DIR ||
   process.env.SQLITE_PATH ||
@@ -423,7 +424,15 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
 const db = new DatabaseSync(DB_PATH);
+
+app.use("/uploads", express.static(UPLOAD_DIR, {
+  maxAge: "7d"
+}));
 
 db.exec(`
   PRAGMA journal_mode = WAL;
@@ -1576,6 +1585,82 @@ function requireCreatorLogin(req, res, next) {
   rememberCreatorOwnerDevice(req, req.session.creatorProfile.slug, req.query.deviceFamily);
   next();
 }
+
+const TRACKED_THUMBNAIL_MAX_BYTES = 1_500_000;
+const TRACKED_THUMBNAIL_TYPES = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp"
+};
+
+function uploadedImageMatchesType(buffer, mimeType) {
+  if (mimeType === "image/jpeg") {
+    return buffer.length > 3 &&
+      buffer[0] === 0xff &&
+      buffer[1] === 0xd8 &&
+      buffer[2] === 0xff;
+  }
+
+  if (mimeType === "image/png") {
+    return buffer.length > 8 &&
+      buffer[0] === 0x89 &&
+      buffer.toString("ascii", 1, 4) === "PNG";
+  }
+
+  if (mimeType === "image/webp") {
+    return buffer.length > 12 &&
+      buffer.toString("ascii", 0, 4) === "RIFF" &&
+      buffer.toString("ascii", 8, 12) === "WEBP";
+  }
+
+  return false;
+}
+
+app.post(
+  "/api/dashboard/thumbnail",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-thumbnail", 60_000, 20),
+  (req, res) => {
+    const imageData = String(req.body.imageData || "");
+    const match = imageData.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+
+    if (!match) {
+      return res.status(400).json({
+        success: false,
+        message: "Upload a JPG, PNG, or WebP thumbnail."
+      });
+    }
+
+    const mimeType = match[1];
+    const extension = TRACKED_THUMBNAIL_TYPES[mimeType];
+    const buffer = Buffer.from(match[2], "base64");
+
+    if (!buffer.length || buffer.length > TRACKED_THUMBNAIL_MAX_BYTES) {
+      return res.status(400).json({
+        success: false,
+        message: "Thumbnail must be under 1.5 MB."
+      });
+    }
+
+    if (!uploadedImageMatchesType(buffer, mimeType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Thumbnail file type did not match the image data."
+      });
+    }
+
+    const creatorKey = compactCreatorSlug(req.session.creatorProfile.slug) || "creator";
+    const filename = `${creatorKey}-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${extension}`;
+    const filePath = path.join(UPLOAD_DIR, filename);
+
+    fs.writeFileSync(filePath, buffer, { flag: "wx" });
+
+    res.json({
+      success: true,
+      url: `/uploads/${filename}`
+    });
+  }
+);
 
 app.get("/dashboard", requireCreatorLogin, (req, res) => {
   res.sendFile(path.join(__dirname, "public", "dashboard.html"));

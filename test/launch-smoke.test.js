@@ -51,6 +51,18 @@ test("creator login entrypoint is platform neutral", () => {
   assert.doesNotMatch(terms, /sign in with YouTube/);
 });
 
+test("dashboard shows dated support activity and uploads tracked thumbnails", () => {
+  assert.match(dashboard, /function formatSupportTimestamp/);
+  assert.doesNotMatch(dashboard, /toLocaleTimeString/);
+  assert.match(dashboard, /id="contentThumbnailFile"/);
+  assert.match(dashboard, /type="file"/);
+  assert.doesNotMatch(dashboard, /Thumbnail image URL/);
+  assert.match(dashboard, /\/api\/dashboard\/thumbnail/);
+  assert.match(server, /UPLOAD_DIR/);
+  assert.match(server, /app\.use\("\/uploads", express\.static\(UPLOAD_DIR/);
+  assert.match(server, /app\.post\(\s*"\/api\/dashboard\/thumbnail"/);
+});
+
 test("browser debug logs are not leaking profile or response details", () => {
   assert.doesNotMatch(viewer, /RAW RESPONSE|CURRENT CREATOR/);
   assert.doesNotMatch(dashboard, /LOGGED IN PROFILE|PROFILE IMAGE URL/);

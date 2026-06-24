@@ -87,6 +87,11 @@
       background: rgba(255,255,255,0.08);
     }
 
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.62;
+    }
+
     .actions {
       display: flex;
       gap: 10px;
@@ -153,6 +158,40 @@
       border: 1px solid rgba(255,255,255,0.08);
       word-break: break-all;
       color: #dbeafe;
+      font-weight: 800;
+    }
+
+    .form-control {
+      width: 100%;
+      margin-top: 10px;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.25);
+      color: white;
+      font-weight: 800;
+    }
+
+    .form-control:first-child {
+      margin-top: 14px;
+    }
+
+    .thumbnail-preview {
+      width: 100%;
+      max-height: 190px;
+      display: none;
+      margin-top: 10px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.1);
+      object-fit: cover;
+      background: rgba(0,0,0,0.22);
+    }
+
+    .form-error {
+      min-height: 18px;
+      margin-top: 10px;
+      color: #ff9aa8;
+      font-size: 13px;
       font-weight: 800;
     }
 
@@ -243,6 +282,14 @@
       margin-top: 4px;
       color: #aeb8d6;
       font-size: 13px;
+    }
+
+    .feed-time {
+      color: #f8faff;
+      font-size: 14px;
+      font-weight: 900;
+      text-align: right;
+      white-space: nowrap;
     }
 
     .empty {
@@ -342,28 +389,32 @@
   <input
     id="contentTitle"
     placeholder="Video title"
-    style="width:100%; margin-top:14px; padding:14px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); background:rgba(0,0,0,0.25); color:white; font-weight:800;"
+    class="form-control"
   >
 
   <input
-  id="contentThumbnail"
-  placeholder="Thumbnail image URL"
-  style="width:100%; margin-top:10px; padding:14px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); background:rgba(0,0,0,0.25); color:white; font-weight:800;"
->
+    id="contentThumbnailFile"
+    class="form-control"
+    type="file"
+    accept="image/jpeg,image/png,image/webp"
+  >
+
+  <img id="contentThumbnailPreview" class="thumbnail-preview" alt="">
 
   <select
     id="contentPlatform"
-    style="width:100%; margin-top:10px; padding:14px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); background:rgba(0,0,0,0.25); color:white; font-weight:800;"
+    class="form-control"
   >
     <option value="tiktok">TikTok</option>
     <option value="youtube">YouTube</option>
     <option value="instagram">Instagram</option>
   </select>
 
-  <button class="btn" style="margin-top:12px;" onclick="createTrackedLink()">
+  <button class="btn" id="generateTrackedLinkBtn" style="margin-top:12px;" onclick="createTrackedLink()">
     Generate link
   </button>
 
+  <div class="form-error" id="trackedContentError"></div>
   <div class="link-box" id="trackedLink" style="display:none;"></div>
 </div>
     </section>
@@ -377,6 +428,7 @@
   <script>
     let publicLink = "";
 let currentProfile = null;
+let thumbnailPreviewUrl = "";
 
 function getDashboardDeviceFamily() {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -429,6 +481,124 @@ function renderDashboardBadges(badges = [], equippedBadge = null) {
       ${visibleBadges.map(renderDashboardBadge).join("")}
     </span>
   `;
+}
+
+function setTrackedContentError(message = "") {
+  const errorEl = document.getElementById("trackedContentError");
+  if (errorEl) errorEl.innerText = message;
+}
+
+function formatSupportTimestamp(value) {
+  const date = new Date(Number(value || 0));
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Could not read thumbnail image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load thumbnail image."));
+    image.src = src;
+  });
+}
+
+async function prepareThumbnailUpload(file) {
+  if (!file) return "";
+
+  const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+  if (!allowedTypes.has(file.type)) {
+    throw new Error("Upload a JPG, PNG, or WebP thumbnail.");
+  }
+
+  if (file.size > 8 * 1024 * 1024) {
+    throw new Error("Choose an image under 8 MB.");
+  }
+
+  const rawDataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(rawDataUrl);
+  const maxSide = 960;
+  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  canvas.width = width;
+  canvas.height = height;
+  ctx.fillStyle = "#0d1327";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+
+  return canvas.toDataURL("image/jpeg", 0.78);
+}
+
+async function uploadTrackedThumbnail(file) {
+  if (!file) return "";
+
+  const imageData = await prepareThumbnailUpload(file);
+  const res = await fetch("/api/dashboard/thumbnail", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageData })
+  });
+  const data = await res.json();
+
+  if (!data.success) {
+    throw new Error(data.message || "Could not upload thumbnail.");
+  }
+
+  return data.url || "";
+}
+
+function previewTrackedThumbnail() {
+  const input = document.getElementById("contentThumbnailFile");
+  const preview = document.getElementById("contentThumbnailPreview");
+  const file = input?.files?.[0];
+
+  setTrackedContentError("");
+
+  if (thumbnailPreviewUrl) {
+    URL.revokeObjectURL(thumbnailPreviewUrl);
+    thumbnailPreviewUrl = "";
+  }
+
+  if (!file) {
+    preview.style.display = "none";
+    preview.removeAttribute("src");
+    return;
+  }
+
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    input.value = "";
+    preview.style.display = "none";
+    preview.removeAttribute("src");
+    setTrackedContentError("Upload a JPG, PNG, or WebP thumbnail.");
+    return;
+  }
+
+  thumbnailPreviewUrl = URL.createObjectURL(file);
+  preview.src = thumbnailPreviewUrl;
+  preview.style.display = "block";
 }
 
 function getSupportIslandLink() {
@@ -519,7 +689,7 @@ img.src = profile.profileImage || "";
             <span>${escapeHtml(item.emoji ? item.emoji : "Support echoed into the well")}</span>
           </div>
 
-          <div>${new Date(item.time).toLocaleTimeString()}</div>
+          <div class="feed-time">${formatSupportTimestamp(item.time)}</div>
         </div>
       `).join("");
   }
@@ -536,40 +706,61 @@ img.src = profile.profileImage || "";
         button.innerText = "Copy island link";
       }, 1200);
     }
-    function createTrackedLink() {
+    async function createTrackedLink() {
   const title = document.getElementById("contentTitle").value.trim();
   const platform = document.getElementById("contentPlatform").value;
+  const thumbnailFile = document.getElementById("contentThumbnailFile").files[0];
+  const button = document.getElementById("generateTrackedLinkBtn");
+
+  setTrackedContentError("");
 
   if (!title) {
-    alert("Add a video title first.");
+    setTrackedContentError("Add a video title first.");
     return;
   }
 
-  const thumbnail = document.getElementById("contentThumbnail").value.trim();
+  let thumbnail = "";
+
+  try {
+    button.disabled = true;
+    button.innerText = "Generating...";
+    thumbnail = await uploadTrackedThumbnail(thumbnailFile);
+  } catch (err) {
+    setTrackedContentError(err.message || "Could not upload thumbnail.");
+    return;
+  } finally {
+    button.disabled = false;
+    button.innerText = "Generate link";
+  }
 
   const videoId =
     platform + "-" + Date.now();
 
-  const link =
-    window.location.origin +
-    "/island/" +
-    encodeURIComponent(currentProfile.slug) +
-    "?video=" +
-    encodeURIComponent(videoId) +
-    "&view=supporter" +
-    "&title=" +
-    encodeURIComponent(title) +
-    "&platform=" +
-    encodeURIComponent(platform) +
-    "&thumbnail=" +
-    encodeURIComponent(thumbnail);
+  const linkUrl = new URL(
+    "/island/" + encodeURIComponent(currentProfile.slug),
+    window.location.origin
+  );
+  linkUrl.searchParams.set("video", videoId);
+  linkUrl.searchParams.set("view", "supporter");
+  linkUrl.searchParams.set("title", title);
+  linkUrl.searchParams.set("platform", platform);
+
+  if (thumbnail) {
+    linkUrl.searchParams.set("thumbnail", thumbnail);
+  }
+
+  const link = linkUrl.toString();
 
   const box = document.getElementById("trackedLink");
   box.innerText = link;
   box.style.display = "block";
 
-  navigator.clipboard.writeText(link);
+  navigator.clipboard.writeText(link).catch(() => {});
 }
+
+    document
+      .getElementById("contentThumbnailFile")
+      .addEventListener("change", previewTrackedThumbnail);
 
     loadDashboard();
   </script>
