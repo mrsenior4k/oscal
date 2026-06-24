@@ -966,7 +966,7 @@ function canonicalizeStoredCreatorStats() {
 canonicalizeStoredCreatorStats();
 
 // ---------- Config ----------
-const MAX_SUPPORTS_PER_DAY = 3;
+const MAX_SUPPORTS_PER_DAY = 99;
 const COOLDOWN_MS = 30_000; // 30 seconds
 const REWARD_PER_SUPPORT = 0.05;
 const MIN_AD_WATCH_MS = 14_000; // basic backend validation
