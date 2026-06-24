@@ -1323,7 +1323,8 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
   videoId = "main",
   videoTitle = "Main support page",
   videoThumbnail = "",
-  platform = "unknown"
+  platform = "unknown",
+  selfSupportTest = false
 } = req.body;
 
 debugLog("EVENT RECEIVED:", {
@@ -1332,7 +1333,8 @@ debugLog("EVENT RECEIVED:", {
   anonId,
   timeZone,
   deviceFamily,
-  supporterView
+  supporterView,
+  selfSupportTest
 });
 
   if (!type || !creator || !fingerprint || !timeZone) {
@@ -1340,10 +1342,16 @@ debugLog("EVENT RECEIVED:", {
   }
 
   const creatorKey = getCanonicalCreatorKey(creator, req);
-  if (
+  const selfSupportTestMode =
+    selfSupportTest === true ||
+    selfSupportTest === "true" ||
+    selfSupportTest === "1";
+  const isCreatorOwnerRequest =
     isLoggedInCreatorForSlug(req, creator) ||
-    isKnownCreatorOwnerDevice(req, creator, deviceFamily)
-  ) {
+    isKnownCreatorOwnerDevice(req, creator, deviceFamily);
+  const allowSelfSupportTest = selfSupportTestMode && isCreatorOwnerRequest;
+
+  if (isCreatorOwnerRequest && !allowSelfSupportTest) {
     return res.json({
       success: false,
       message: "You cannot support your own island."
@@ -1399,7 +1407,7 @@ debugLog("EVENT RECEIVED:", {
   const userData = userProgress[deviceProgressKey].days[today];
 
   // ---------- Anti-bot / self-support ----------
-  if (deviceProgressKey === hashFingerprint(creator)) {
+  if (deviceProgressKey === hashFingerprint(creator) && !allowSelfSupportTest) {
     return res.json({ success: false, message: 'Cannot support yourself' });
   }
 

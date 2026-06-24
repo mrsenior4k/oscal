@@ -2744,6 +2744,8 @@ const rawCreator =
 const creator = decodeURIComponent(rawCreator || "Alex").trim();
     const params = new URLSearchParams(window.location.search);
     const forceSupporterView = params.get("view") === "supporter";
+    const selfSupportTestMode =
+      params.get("selftest") === "1" || params.get("selftest") === "true";
     let anonId = localStorage.getItem("anonId");
 
 if (!anonId) {
@@ -3037,24 +3039,25 @@ function loggedInCreatorOwnsIsland() {
 
 function updateCreatorOwnerMode() {
   isCreatorViewingOwnIsland = loggedInCreatorOwnsIsland();
+  const ownerBlocked = isCreatorViewingOwnIsland && !selfSupportTestMode;
 
   const watchBtn = document.getElementById("watchBtn");
   const watchBtnLabel = watchBtn?.querySelector("span");
   const rewardStrip = document.getElementById("rewardStrip");
 
   if (watchBtnLabel) {
-    watchBtnLabel.innerText = isCreatorViewingOwnIsland
+    watchBtnLabel.innerText = ownerBlocked
       ? "Back to dashboard"
       : "Watch sponsor to support";
   }
 
   if (rewardStrip) {
-    rewardStrip.classList.toggle("hidden", isCreatorViewingOwnIsland);
+    rewardStrip.classList.toggle("hidden", ownerBlocked);
   }
 }
 
 function handleMainAction() {
-  if (isCreatorViewingOwnIsland) {
+  if (isCreatorViewingOwnIsland && !selfSupportTestMode) {
     window.location.href = "/dashboard";
     return;
   }
@@ -5211,7 +5214,7 @@ body: JSON.stringify({
 }
 
     async function startAd() {
-  if (isCreatorViewingOwnIsland) {
+  if (isCreatorViewingOwnIsland && !selfSupportTestMode) {
     window.location.href = "/dashboard";
     return;
   }
@@ -5243,6 +5246,7 @@ body: JSON.stringify({
         timeZone: userTimeZone,
         deviceFamily,
         supporterView: forceSupporterView,
+        selfSupportTest: selfSupportTestMode,
         videoId,
         videoTitle,
         videoThumbnail,
@@ -5505,6 +5509,7 @@ body: JSON.stringify({
         timeZone: userTimeZone,
         deviceFamily,
         supporterView: forceSupporterView,
+        selfSupportTest: selfSupportTestMode,
 
         supporterName:
           serverHasSupporterProfile ? supporterProfile?.name || "" : "",

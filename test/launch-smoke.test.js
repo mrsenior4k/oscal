@@ -33,6 +33,15 @@ test("owner-device self-support guard is wired through viewer and dashboard", ()
   assert.match(dashboard, /getDashboardDeviceFamily/);
 });
 
+test("owner self-support test mode is URL gated", () => {
+  assert.match(viewer, /params\.get\("selftest"\)/);
+  assert.match(viewer, /selfSupportTest:\s*selfSupportTestMode/);
+  assert.match(viewer, /isCreatorViewingOwnIsland\s*&&\s*!selfSupportTestMode/);
+  assert.match(server, /allowSelfSupportTest\s*=\s*selfSupportTestMode\s*&&\s*isCreatorOwnerRequest/);
+  assert.match(server, /isCreatorOwnerRequest\s*&&\s*!allowSelfSupportTest/);
+  assert.match(server, /hashFingerprint\(creator\)\s*&&\s*!allowSelfSupportTest/);
+});
+
 test("creator login entrypoint is platform neutral", () => {
   assert.match(server, /app\.get\("\/auth\/creator"/);
   assert.match(server, /res\.redirect\("\/auth\/creator"\)/);
