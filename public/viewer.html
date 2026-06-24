@@ -3148,6 +3148,7 @@ const stickerAssetVersion = "2026-06-24";
 let pendingAttributionSupport = null;
 let attributionVideos = [];
 let attributionVisibleCount = 5;
+const STICKERS_ENABLED = false;
 const LOW_POWER_STICKER_QUERY =
   "(max-width: 760px), (pointer: coarse), (prefers-reduced-motion: reduce)";
 const SUPPORTER_STORAGE_SCOPE = String(anonId || "anonymous");
@@ -3211,7 +3212,7 @@ function isLowPowerStickerMode() {
 }
 
 function shouldUseLightweightWishAnimation() {
-  return isLowPowerStickerMode();
+  return false;
 }
 
 function cleanupStickerCanvas(canvas) {
@@ -4842,6 +4843,11 @@ function renderSupportReaction(el, reaction, reactionType = "emoji", stickerUrl 
   clearStickerContainer(el);
   el.className = "support-message";
 
+  if (reactionType === "sticker" && !STICKERS_ENABLED) {
+    el.innerText = "Support echoed into the well";
+    return;
+  }
+
   if (reactionType === "sticker") {
     el.classList.add("sticker-message");
 
@@ -4878,7 +4884,7 @@ function addSupportToFeed(
 
   const item = document.createElement("div");
   item.className = "feed-item new-support";
-  if (reactionType === "sticker") {
+  if (reactionType === "sticker" && STICKERS_ENABLED) {
     item.classList.add("has-sticker");
   }
   item.dataset.time = time;
@@ -4956,6 +4962,8 @@ function sendEmoji(emoji) {
 }
 
 function sendSticker(sticker) {
+  if (!STICKERS_ENABLED) return Promise.resolve();
+
   if (typeof sticker === "string") {
     return sendReaction(sticker, "sticker");
   }
@@ -5067,6 +5075,15 @@ async function showReactionPicker(creatorSupportCount) {
   const supportCount = Number(creatorSupportCount);
   const isThirdSupport = supportCount === 3;
   const lockedStickerSupportsLeft = Math.max(0, 3 - supportCount);
+
+  if (!STICKERS_ENABLED) {
+    emojiRow.classList.remove("hidden");
+    stickerRow.classList.add("hidden");
+    destroyStickerCanvases(stickerRow);
+    if (title) title.innerText = "Send a reaction into the deep end:";
+    picker.classList.remove("hidden");
+    return;
+  }
 
   emojiRow.classList.toggle("hidden", isThirdSupport);
   stickerRow.classList.remove("hidden");

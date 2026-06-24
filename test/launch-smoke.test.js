@@ -108,23 +108,19 @@ test("sponsor ads have file-specific tracking links", () => {
   assert.match(server, /clickUrl:\s*SPONSOR_AD_CLICK_URLS\[file\]\s*\|\|\s*DEFAULT_SPONSOR_CLICK_URL/);
 });
 
-test("mobile sticker rendering avoids heavy simultaneous previews", () => {
+test("mobile uses the original well wish animation and stickers are disabled", () => {
   assert.match(viewer, /const stickerAssetVersion = "2026-06-24"/);
   assert.doesNotMatch(viewer, /const stickerAssetVersion = Date\.now/);
+  assert.match(viewer, /const STICKERS_ENABLED = false/);
   assert.match(viewer, /function isLowPowerStickerMode/);
   assert.match(viewer, /function shouldUseLightweightWishAnimation/);
-  assert.match(viewer, /function playLightweightWishAnimation/);
-  assert.match(viewer, /quick-wish-toast/);
-  assert.match(viewer, /quick-wish-coin/);
-  assert.match(viewer, /quick-wish-ripple/);
+  assert.match(viewer, /function shouldUseLightweightWishAnimation\(\)\s*{\s*return false;/);
+  assert.match(viewer, /function playWishAnimation/);
+  assert.match(viewer, /overlay\.classList\.remove\("quick-wish"\)/);
   assert.match(viewer, /function destroyStickerCanvases/);
-  assert.match(viewer, /function createStickerPreviewPlaceholder/);
-  assert.match(viewer, /const targetFrameMs = options\.targetFrameMs \?\? \(lowPower \? 1000 \/ 12 : 0\)/);
-  assert.match(viewer, /pauseWhenHidden/);
-  assert.match(viewer, /IntersectionObserver/);
-  assert.match(viewer, /createKeyedStickerCanvas\(stickerUrl,\s*"feed-sticker-canvas"/);
-  assert.match(viewer, /createKeyedStickerCanvas\(sticker\.url,\s*"sticker-preview-canvas"/);
-  assert.doesNotMatch(viewer, /lowPower\s*\?\s*createNativeStickerVideo/);
+  assert.match(viewer, /reactionType === "sticker" && !STICKERS_ENABLED/);
+  assert.match(viewer, /reactionType === "sticker" && STICKERS_ENABLED/);
+  assert.match(viewer, /stickerRow\.classList\.add\("hidden"\)/);
   assert.match(server, /Sticker \$\{index \+ 1\}/);
   assert.match(viewer, /clearStickerContainer\(stickerRow\)/);
   assert.match(viewer, /hideReactionPicker\(\)/);
