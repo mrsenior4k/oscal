@@ -69,6 +69,7 @@ test("dashboard shows dated support activity and platform video attribution cont
   assert.match(server, /https:\/\/www\.tiktok\.com\/oembed/);
   assert.match(server, /https:\/\/www\.youtube\.com\/oembed/);
   assert.match(server, /function saveThumbnailUpload/);
+  assert.match(server, /recordSourcePlatform === "direct"/);
   assert.match(server, /app\.post\(\s*"\/support\/attribute-video"/);
   assert.match(viewer, /Which video made you want to support/);
   assert.match(viewer, /showVideoAttributionPrompt/);

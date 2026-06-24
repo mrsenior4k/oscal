@@ -1297,7 +1297,9 @@ function getCreatorVideosList(creatorKey, platform = "") {
 }
 
 function getEligibleVideos(creatorKey, platform, limit = 0) {
-  const videos = getCreatorVideosList(creatorKey, platform)
+  const normalizedSource = normalizeSourcePlatform(platform, "direct");
+  const contentPlatform = normalizeContentPlatform(normalizedSource);
+  const videos = getCreatorVideosList(creatorKey, contentPlatform)
     .filter(video => video.isEligible !== false);
 
   return limit > 0 ? videos.slice(0, limit) : videos;
@@ -2517,9 +2519,9 @@ app.delete(
 
 app.get("/support/eligible-videos", enforceRateLimit("eligible-videos", 60_000, 60), (req, res) => {
   const creator = getCanonicalCreatorKey(req.query.creator, req);
-  const platform = normalizeContentPlatform(req.query.platform);
+  const platform = normalizeSourcePlatform(req.query.platform, "direct");
 
-  if (!creator || !platform) {
+  if (!creator) {
     return res.json({ success: true, videos: [] });
   }
 
@@ -2576,7 +2578,10 @@ app.post("/support/attribute-video", enforceRateLimit("support-attribute-video",
       return res.status(404).json({ success: false, message: "Video not found." });
     }
 
-    if (video.platform !== record.sourcePlatform || video.isEligible === false) {
+    const recordSourcePlatform = normalizeSourcePlatform(record.sourcePlatform, "direct");
+    const platformMatches = recordSourcePlatform === "direct" || video.platform === recordSourcePlatform;
+
+    if (!platformMatches || video.isEligible === false) {
       return res.status(400).json({ success: false, message: "Video is not eligible for this platform." });
     }
   }
