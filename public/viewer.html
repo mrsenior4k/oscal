@@ -2514,7 +2514,7 @@
 
   <div id="identityPrompt" class="hidden">
   <div class="identity-card">
-    <h3>Claim your presence</h3>
+    <h3>Set up your supporter identity.</h3>
 
     <p>
       You’ve supported creators 3 times. Save your identity in the deep end.
@@ -2528,7 +2528,7 @@
 
 <div id="supporterLoginModal" class="wish-overlay hidden">
   <div class="identity-card" style="max-width:360px;">
-    <h3 id="supporterModalTitle">Claim your presence</h3>
+    <h3 id="supporterModalTitle">Set up your supporter identity.</h3>
 
     <div class="profile-form">
       <div class="profile-preview">
@@ -4627,7 +4627,7 @@ function startSupporterLogin() {
   removeSupporterPfp = false;
 
   document.getElementById("supporterModalTitle").innerText =
-    serverHasSupporterProfile ? "Edit profile" : "Claim your presence";
+    serverHasSupporterProfile ? "Edit profile" : "Set up your supporter identity.";
   document.getElementById("supporterNameInput").value =
     serverHasSupporterProfile && supporterProfile?.name
       ? supporterProfile.name
