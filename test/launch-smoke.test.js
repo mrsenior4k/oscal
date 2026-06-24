@@ -132,6 +132,18 @@ test("single video attribution is saved without prompting", () => {
   assert.match(viewer, /submitVideoAttribution\("skipped", "", \{ silent: true \}\)/);
 });
 
+test("video attribution choice is remembered for the browser session", () => {
+  assert.match(viewer, /function getVideoAttributionMemoryKey/);
+  assert.match(viewer, /sessionStorage\.setItem\(\s*getVideoAttributionMemoryKey\(platform\)/);
+  assert.match(viewer, /function getReusableVideoAttributionChoice/);
+  assert.match(viewer, /attributionVideos\.some\(video => video\.id === choice\.selectedVideoId\)/);
+  assert.match(viewer, /const rememberedChoice = getReusableVideoAttributionChoice\(pendingAttributionSupport\.sourcePlatform\)/);
+  assert.match(viewer, /rememberedChoice\.attributionType/);
+  assert.match(viewer, /rememberChoice:\s*false/);
+  assert.match(viewer, /clearVideoAttributionChoice\(pendingAttributionSupport\.sourcePlatform\)/);
+  assert.match(viewer, /options\.rememberChoice !== false/);
+});
+
 test("privacy and terms pages are routed and linked", () => {
   assert.match(server, /app\.get\("\/privacy"/);
   assert.match(server, /app\.get\("\/terms"/);

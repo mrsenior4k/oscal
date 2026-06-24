@@ -5401,6 +5401,52 @@ body: JSON.stringify({
       if (list) list.innerHTML = "";
     }
 
+    function getVideoAttributionMemoryKey(platform = sourcePlatform) {
+      const cleanPlatform = allowedSourcePlatforms.has(platform) ? platform : "direct";
+      return `videoAttributionChoice:${creator}:${cleanPlatform}`;
+    }
+
+    function readVideoAttributionChoice(platform = sourcePlatform) {
+      try {
+        return JSON.parse(sessionStorage.getItem(getVideoAttributionMemoryKey(platform)) || "null");
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function rememberVideoAttributionChoice(attributionType, selectedVideoId = "", platform = sourcePlatform) {
+      try {
+        sessionStorage.setItem(
+          getVideoAttributionMemoryKey(platform),
+          JSON.stringify({
+            attributionType,
+            selectedVideoId,
+            savedAt: Date.now()
+          })
+        );
+      } catch (_) {}
+    }
+
+    function clearVideoAttributionChoice(platform = sourcePlatform) {
+      try {
+        sessionStorage.removeItem(getVideoAttributionMemoryKey(platform));
+      } catch (_) {}
+    }
+
+    function getReusableVideoAttributionChoice(platform = sourcePlatform) {
+      const choice = readVideoAttributionChoice(platform);
+      if (!choice || !choice.attributionType) return null;
+
+      if (choice.attributionType === "selected_video") {
+        const stillEligible = attributionVideos.some(video => video.id === choice.selectedVideoId);
+        return stillEligible ? choice : null;
+      }
+
+      return ["creator_only", "skipped"].includes(choice.attributionType)
+        ? choice
+        : null;
+    }
+
     function renderVideoAttributionOptions() {
       const list = document.getElementById("videoAttributionList");
       if (!list) return;
@@ -5473,6 +5519,20 @@ body: JSON.stringify({
         attributionVideos = [];
       }
 
+      const rememberedChoice = getReusableVideoAttributionChoice(pendingAttributionSupport.sourcePlatform);
+      if (rememberedChoice) {
+        await submitVideoAttribution(
+          rememberedChoice.attributionType,
+          rememberedChoice.selectedVideoId || "",
+          { silent: true, rememberChoice: false }
+        );
+        return;
+      }
+
+      if (readVideoAttributionChoice(pendingAttributionSupport.sourcePlatform)) {
+        clearVideoAttributionChoice(pendingAttributionSupport.sourcePlatform);
+      }
+
       if (attributionVideos.length === 1) {
         await submitVideoAttribution("selected_video", attributionVideos[0].id, { silent: true });
         return;
@@ -5540,6 +5600,14 @@ body: JSON.stringify({
 
         if (!data.success) {
           throw new Error(data.message || "Could not save selection.");
+        }
+
+        if (options.rememberChoice !== false) {
+          rememberVideoAttributionChoice(
+            attributionType,
+            selectedVideoId,
+            pendingAttributionSupport.sourcePlatform
+          );
         }
 
         hideVideoAttributionPrompt();
