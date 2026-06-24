@@ -110,10 +110,15 @@ test("mobile sticker rendering avoids heavy simultaneous previews", () => {
   assert.match(viewer, /const stickerAssetVersion = "2026-06-24"/);
   assert.doesNotMatch(viewer, /const stickerAssetVersion = Date\.now/);
   assert.match(viewer, /function isLowPowerStickerMode/);
+  assert.match(viewer, /function shouldUseLightweightWishAnimation/);
+  assert.match(viewer, /function playLightweightWishAnimation/);
+  assert.match(viewer, /quick-wish/);
   assert.match(viewer, /function destroyStickerCanvases/);
   assert.match(viewer, /function createStickerPreviewPlaceholder/);
   assert.match(viewer, /const targetFrameMs = lowPower \? 1000 \/ 12 : 0/);
   assert.match(viewer, /lowPower\s*\?\s*createStickerPreviewPlaceholder/);
+  assert.match(viewer, /feed-sticker-placeholder/);
+  assert.match(server, /Sticker \$\{index \+ 1\}/);
   assert.match(viewer, /clearStickerContainer\(stickerRow\)/);
   assert.match(viewer, /hideReactionPicker\(\)/);
 });

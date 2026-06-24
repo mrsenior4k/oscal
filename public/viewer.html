@@ -2168,6 +2168,32 @@
   line-height: 1.15;
 }
 
+.wish-overlay.quick-wish {
+  backdrop-filter: none;
+  background: radial-gradient(circle at center, rgba(38, 73, 103, 0.34), rgba(4, 7, 16, 0.88));
+}
+
+.wish-overlay.quick-wish .wish-scene {
+  width: min(92vw, 420px);
+  height: min(42vh, 300px);
+}
+
+.wish-overlay.quick-wish .wish-svg {
+  display: none;
+}
+
+.wish-overlay.quick-wish .wish-glow {
+  width: 240px;
+  height: 240px;
+  filter: none;
+}
+
+.wish-overlay.quick-wish .wish-title {
+  top: 50%;
+  font-size: clamp(30px, 8vw, 44px);
+  letter-spacing: 0;
+}
+
 .sticker-btn.first-sticker .sticker-preview-canvas {
   transform: scale(1.16);
   transform-origin: center;
@@ -2235,6 +2261,21 @@
   filter: none;
 }
 
+.feed-sticker-placeholder {
+  width: 112px;
+  height: 84px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 225, 135, 0.28);
+  background:
+    linear-gradient(135deg, rgba(56, 189, 248, 0.14), rgba(255, 217, 117, 0.16)),
+    rgba(255,255,255,0.06);
+  color: #fff8df;
+  font-size: 12px;
+  font-weight: 950;
+}
+
 .feed-item.has-sticker {
   min-height: 180px;
 }
@@ -2247,6 +2288,47 @@
   color: #fff4d2 !important;
   font-size: 12px !important;
   font-weight: 900;
+}
+
+@media (max-width: 760px), (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .wish-overlay {
+    backdrop-filter: none;
+  }
+
+  .sticker-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .sticker-btn {
+    min-height: 76px;
+    padding: 8px;
+    border-radius: 14px;
+    box-shadow: inset 0 0 12px rgba(255, 244, 194, 0.06);
+  }
+
+  .sticker-preview-placeholder {
+    width: 100%;
+    height: 58px;
+    min-height: 58px;
+    padding: 6px;
+    border-radius: 12px;
+    font-size: 11px;
+  }
+
+  .feed-sticker-canvas {
+    width: 112px;
+    height: 112px;
+  }
+
+  .feed-sticker-placeholder {
+    width: 96px;
+    height: 72px;
+  }
+
+  .feed-item.has-sticker {
+    min-height: 124px;
+  }
 }
 
   .wish-svg {
@@ -2972,6 +3054,10 @@ function isLowPowerStickerMode() {
   return Boolean(lowPowerQuery?.matches);
 }
 
+function shouldUseLightweightWishAnimation() {
+  return isLowPowerStickerMode();
+}
+
 function cleanupStickerCanvas(canvas) {
   if (!canvas) return;
 
@@ -3007,10 +3093,10 @@ function clearStickerContainer(el) {
   el.innerHTML = "";
 }
 
-function createStickerPreviewPlaceholder(sticker) {
+function createStickerPreviewPlaceholder(sticker, index = 0) {
   const placeholder = document.createElement("div");
   placeholder.className = "sticker-preview-placeholder";
-  placeholder.innerText = sticker?.title || "Sticker";
+  placeholder.innerText = sticker?.displayTitle || `Sticker ${index + 1}`;
   return placeholder;
 }
 
@@ -4524,7 +4610,14 @@ function renderSupportReaction(el, reaction, reactionType = "emoji", stickerUrl 
     el.classList.add("sticker-message");
 
     if (stickerUrl) {
-      el.appendChild(createKeyedStickerCanvas(stickerUrl, "feed-sticker-canvas"));
+      if (isLowPowerStickerMode()) {
+        const placeholder = document.createElement("div");
+        placeholder.className = "feed-sticker-placeholder";
+        placeholder.innerText = reaction || "Sticker";
+        el.appendChild(placeholder);
+      } else {
+        el.appendChild(createKeyedStickerCanvas(stickerUrl, "feed-sticker-canvas"));
+      }
       return;
     }
 
@@ -4687,6 +4780,8 @@ function renderStickerButtons(stickers, lockedSupportsLeft = 0) {
       ];
 
   options.forEach((sticker, index) => {
+    sticker.displayTitle = sticker.url ? `Sticker ${index + 1}` : sticker.title;
+
     const button = document.createElement("button");
     button.className = "sticker-btn";
     if (index === 0) button.classList.add("first-sticker");
@@ -4697,7 +4792,7 @@ function renderStickerButtons(stickers, lockedSupportsLeft = 0) {
     if (sticker.url) {
       button.appendChild(
         lowPower
-          ? createStickerPreviewPlaceholder(sticker)
+          ? createStickerPreviewPlaceholder(sticker, index)
           : createKeyedStickerCanvas(sticker.url, "sticker-preview-canvas", {
               lowPower: false
             })
@@ -4706,7 +4801,7 @@ function renderStickerButtons(stickers, lockedSupportsLeft = 0) {
 
     if (!sticker.url) {
       const label = document.createElement("strong");
-      label.innerText = sticker.title;
+      label.innerText = sticker.displayTitle;
       button.appendChild(label);
     }
 
@@ -5238,6 +5333,11 @@ body: JSON.stringify({
     }
 
     function playWishAnimationOrFinish(completeData) {
+      if (shouldUseLightweightWishAnimation()) {
+        playLightweightWishAnimation(() => finishSuccessfulSupport(completeData));
+        return;
+      }
+
       if (typeof gsap === "undefined") {
         console.warn("GSAP did not load, skipping wish animation.");
         finishSuccessfulSupport(completeData);
@@ -5250,6 +5350,53 @@ body: JSON.stringify({
         console.error("Wish animation failed:", err);
         finishSuccessfulSupport(completeData);
       }
+    }
+
+    function playLightweightWishAnimation(onDone) {
+      const overlay = document.getElementById("wishOverlay");
+      const title = document.getElementById("wishTitle");
+      const glow = document.getElementById("wishGlow");
+
+      if (!overlay || !title || !glow) {
+        if (typeof onDone === "function") onDone();
+        return;
+      }
+
+      overlay.classList.add("quick-wish");
+      overlay.classList.remove("hidden");
+      overlay.style.transition = "opacity 160ms ease";
+      overlay.style.opacity = "0";
+
+      title.innerText = "Make a wish";
+      title.style.transition = "opacity 180ms ease, transform 240ms ease";
+      title.style.opacity = "0";
+      title.style.transform = "translate(-50%, -50%) scale(0.96)";
+
+      glow.style.transition = "opacity 220ms ease, transform 260ms ease";
+      glow.style.opacity = "0";
+      glow.style.transform = "scale(0.9)";
+
+      requestAnimationFrame(() => {
+        overlay.style.opacity = "1";
+        title.style.opacity = "1";
+        title.style.transform = "translate(-50%, -50%) scale(1)";
+        glow.style.opacity = "1";
+        glow.style.transform = "scale(1)";
+      });
+
+      setTimeout(() => {
+        overlay.style.opacity = "0";
+      }, 760);
+
+      setTimeout(() => {
+        overlay.classList.add("hidden");
+        overlay.classList.remove("quick-wish");
+        overlay.style.removeProperty("transition");
+        title.style.removeProperty("transition");
+        glow.style.removeProperty("transition");
+
+        if (typeof onDone === "function") onDone();
+      }, 980);
     }
 
     let glowTimer = null;
@@ -5604,6 +5751,7 @@ body: JSON.stringify({
       const drop4 = document.getElementById("drop4");
       const drop5 = document.getElementById("drop5");
 
+      overlay.classList.remove("quick-wish");
       overlay.classList.remove("hidden");
 
       gsap.killTweensOf([

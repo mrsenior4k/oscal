@@ -1511,7 +1511,10 @@ function getStickerVideos() {
         });
       });
 
-    return Array.from(stickerMap.values()).map(({ ext, ...sticker }) => sticker);
+    return Array.from(stickerMap.values()).map(({ ext, ...sticker }, index) => ({
+      ...sticker,
+      title: `Sticker ${index + 1}`
+    }));
   } catch (err) {
     console.error("Could not read sticker videos:", err);
     return [];
