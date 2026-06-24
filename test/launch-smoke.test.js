@@ -56,6 +56,8 @@ test("dashboard shows dated support activity and uploads tracked thumbnails", ()
   assert.doesNotMatch(dashboard, /toLocaleTimeString/);
   assert.match(dashboard, /id="contentThumbnailFile"/);
   assert.match(dashboard, /type="file"/);
+  assert.match(dashboard, /Thumbnail image/);
+  assert.match(dashboard, /Upload the thumbnail supporters will see/);
   assert.doesNotMatch(dashboard, /Thumbnail image URL/);
   assert.match(dashboard, /\/api\/dashboard\/thumbnail/);
   assert.match(server, /UPLOAD_DIR/);

@@ -176,6 +176,22 @@
       margin-top: 14px;
     }
 
+    .field-label {
+      display: block;
+      margin-top: 12px;
+      color: #f8faff;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .field-hint {
+      margin: 4px 0 0;
+      color: #aeb8d6;
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
     .thumbnail-preview {
       width: 100%;
       max-height: 190px;
@@ -392,11 +408,16 @@
     class="form-control"
   >
 
+  <label class="field-label" for="contentThumbnailFile">Thumbnail image</label>
+  <p class="field-hint" id="thumbnailUploadHint">
+    Upload the thumbnail supporters will see on this tracked content link.
+  </p>
   <input
     id="contentThumbnailFile"
     class="form-control"
     type="file"
     accept="image/jpeg,image/png,image/webp"
+    aria-describedby="thumbnailUploadHint"
   >
 
   <img id="contentThumbnailPreview" class="thumbnail-preview" alt="">
