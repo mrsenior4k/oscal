@@ -1349,7 +1349,7 @@ debugLog("EVENT RECEIVED:", {
   const isCreatorOwnerRequest =
     isLoggedInCreatorForSlug(req, creator) ||
     isKnownCreatorOwnerDevice(req, creator, deviceFamily);
-  const allowSelfSupportTest = selfSupportTestMode && isCreatorOwnerRequest;
+  const allowSelfSupportTest = selfSupportTestMode;
 
   if (isCreatorOwnerRequest && !allowSelfSupportTest) {
     return res.json({

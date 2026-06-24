@@ -37,7 +37,7 @@ test("owner self-support test mode is URL gated", () => {
   assert.match(viewer, /params\.get\("selftest"\)/);
   assert.match(viewer, /selfSupportTest:\s*selfSupportTestMode/);
   assert.match(viewer, /isCreatorViewingOwnIsland\s*&&\s*!selfSupportTestMode/);
-  assert.match(server, /allowSelfSupportTest\s*=\s*selfSupportTestMode\s*&&\s*isCreatorOwnerRequest/);
+  assert.match(server, /allowSelfSupportTest\s*=\s*selfSupportTestMode/);
   assert.match(server, /isCreatorOwnerRequest\s*&&\s*!allowSelfSupportTest/);
   assert.match(server, /hashFingerprint\(creator\)\s*&&\s*!allowSelfSupportTest/);
 });
