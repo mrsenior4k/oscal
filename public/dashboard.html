@@ -805,9 +805,6 @@ function renderEligibleVideos(videos = []) {
         ${video.contentUrl ? `<span>${escapeHtml(video.contentUrl)}</span>` : ""}
       </div>
       <div class="video-actions">
-        <button class="mini-btn" type="button" onclick="toggleVideoEligibility('${escapeHtml(video.id)}', ${video.isEligible === false})">
-          ${video.isEligible === false ? "Make eligible" : "Pause"}
-        </button>
         <button class="mini-btn danger" type="button" onclick="deleteEligibleVideo('${escapeHtml(video.id)}')">Delete</button>
       </div>
     </div>
@@ -1091,22 +1088,6 @@ async function addEligibleVideo() {
     button.disabled = false;
     button.innerText = "Add video";
   }
-}
-
-async function toggleVideoEligibility(videoId, makeEligible) {
-  const res = await fetch(`/api/dashboard/videos/${encodeURIComponent(videoId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ isEligible: makeEligible })
-  });
-  const data = await res.json();
-
-  if (!data.success) {
-    setEligibleVideoError(data.message || "Could not update video.");
-    return;
-  }
-
-  await refreshEligibleVideos();
 }
 
 async function deleteEligibleVideo(videoId) {

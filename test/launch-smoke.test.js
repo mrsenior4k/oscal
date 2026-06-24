@@ -28,6 +28,7 @@ test("Render persistent disk is configured", () => {
 test("owner-device self-support guard is wired through viewer and dashboard", () => {
   assert.match(server, /creatorOwnerDevices/);
   assert.match(server, /isKnownCreatorOwnerDevice/);
+  assert.doesNotMatch(server, /return Boolean\(record\.ipHashes\[getOwnerIpHash\(req\)\]\)/);
   assert.match(viewer, /deviceFamily/);
   assert.match(viewer, /credentials:\s*"same-origin"/);
   assert.match(dashboard, /getDashboardDeviceFamily/);
@@ -76,6 +77,8 @@ test("dashboard shows dated support activity and platform video attribution cont
   assert.match(dashboard, /<option value="youtube">YouTube<\/option>/);
   assert.match(dashboard, /Thumbnail image upload/);
   assert.match(dashboard, /thumbnailImageData/);
+  assert.doesNotMatch(dashboard, /toggleVideoEligibility/);
+  assert.doesNotMatch(dashboard, />Pause</);
 });
 
 test("browser debug logs are not leaking profile or response details", () => {

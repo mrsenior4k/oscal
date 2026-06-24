@@ -638,7 +638,8 @@ function getOwnerDeviceKey(req, deviceFamily) {
   const family = getOwnerDeviceFamily(deviceFamily);
   if (!family) return "";
 
-  return hashFingerprint(`creator-owner-device|${getClientIp(req)}|${family}`);
+  const userAgent = String(req.headers["user-agent"] || "").slice(0, 260);
+  return hashFingerprint(`creator-owner-device|${getClientIp(req)}|${family}|${userAgent}`);
 }
 
 function rememberCreatorOwnerDevice(req, creator, deviceFamily = "") {
@@ -683,11 +684,7 @@ function isKnownCreatorOwnerDevice(req, creator, deviceFamily = "") {
   const deviceKey = getOwnerDeviceKey(req, deviceFamily);
   if (deviceKey && record.deviceKeys[deviceKey]) return true;
 
-  if (deviceKey && Object.keys(record.deviceKeys).length > 0) {
-    return false;
-  }
-
-  return Boolean(record.ipHashes[getOwnerIpHash(req)]);
+  return false;
 }
 
 const insertRateLimitHitStmt = db.prepare(
