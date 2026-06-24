@@ -1032,6 +1032,11 @@ const CONTENT_PLATFORMS = new Set(["tiktok", "instagram", "youtube"]);
 const SOURCE_PLATFORMS = new Set(["tiktok", "instagram", "youtube", "direct"]);
 const ATTRIBUTION_TYPES = new Set(["selected_video", "creator_only", "skipped"]);
 const ATTRIBUTION_WINDOW_MS = 30 * 60 * 1000;
+const METADATA_FETCH_TIMEOUT_MS = 6500;
+const INSTAGRAM_OEMBED_ACCESS_TOKEN =
+  process.env.INSTAGRAM_OEMBED_ACCESS_TOKEN ||
+  process.env.META_OEMBED_ACCESS_TOKEN ||
+  "";
 
 function normalizeSourcePlatform(value, fallback = "direct") {
   const platform = String(value || "").trim().toLowerCase();
@@ -1097,6 +1102,74 @@ function isValidPlatformPostUrl(platform, value) {
 function getVideoIdFromContentUrl(platform, contentUrl) {
   const base = `${normalizeContentPlatform(platform)}|${normalizeOptionalUrl(contentUrl, 1000)}`;
   return `video_${hashFingerprint(base).slice(0, 18)}`;
+}
+
+async function fetchJsonWithTimeout(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), METADATA_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Oscal metadata preview"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Metadata request failed with ${response.status}`);
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeOEmbedMetadata(platform, contentUrl, data = {}) {
+  return {
+    platform,
+    contentUrl,
+    title: cleanText(data.title || data.author_name || "", 120),
+    thumbnailUrl: normalizeOptionalUrl(data.thumbnail_url || "", 1000),
+    publishedAt: 0
+  };
+}
+
+async function fetchPlatformPostMetadata(platform, contentUrl) {
+  const normalizedPlatform = normalizeContentPlatform(platform);
+  const normalizedUrl = normalizeOptionalUrl(contentUrl, 1000);
+
+  if (!normalizedPlatform || !isValidPlatformPostUrl(normalizedPlatform, normalizedUrl)) {
+    throw new Error("Invalid platform URL.");
+  }
+
+  if (normalizedPlatform === "tiktok") {
+    const url = new URL("https://www.tiktok.com/oembed");
+    url.searchParams.set("url", normalizedUrl);
+    return normalizeOEmbedMetadata(normalizedPlatform, normalizedUrl, await fetchJsonWithTimeout(url));
+  }
+
+  if (normalizedPlatform === "youtube") {
+    const url = new URL("https://www.youtube.com/oembed");
+    url.searchParams.set("url", normalizedUrl);
+    url.searchParams.set("format", "json");
+    return normalizeOEmbedMetadata(normalizedPlatform, normalizedUrl, await fetchJsonWithTimeout(url));
+  }
+
+  if (normalizedPlatform === "instagram") {
+    if (!INSTAGRAM_OEMBED_ACCESS_TOKEN) {
+      throw new Error("Instagram metadata needs Meta oEmbed access.");
+    }
+
+    const url = new URL("https://graph.facebook.com/v24.0/instagram_oembed");
+    url.searchParams.set("url", normalizedUrl);
+    url.searchParams.set("access_token", INSTAGRAM_OEMBED_ACCESS_TOKEN);
+    return normalizeOEmbedMetadata(normalizedPlatform, normalizedUrl, await fetchJsonWithTimeout(url));
+  }
+
+  throw new Error("Unsupported platform.");
 }
 
 function getCreatorVideoBucket(creatorKey) {
@@ -2270,15 +2343,12 @@ app.get("/api/dashboard/videos", requireCreatorLogin, (req, res) => {
 });
 
 app.post(
-  "/api/dashboard/videos",
+  "/api/dashboard/videos/metadata",
   requireCreatorLogin,
-  enforceRateLimit("dashboard-videos-add", 60_000, 20),
-  (req, res) => {
-    const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+  enforceRateLimit("dashboard-video-metadata", 60_000, 20),
+  async (req, res) => {
     const platform = normalizeContentPlatform(req.body.platform);
     const contentUrl = normalizeOptionalUrl(req.body.contentUrl, 1000);
-    const title = cleanText(req.body.title, 120);
-    const thumbnailUrl = normalizeOptionalUrl(req.body.thumbnailUrl, 1000);
 
     if (!platform) {
       return res.status(400).json({ success: false, message: "Choose TikTok, Instagram, or YouTube." });
@@ -2288,8 +2358,56 @@ app.post(
       return res.status(400).json({ success: false, message: `Enter a valid ${getPlatformLabel(platform)} URL.` });
     }
 
+    try {
+      const metadata = await fetchPlatformPostMetadata(platform, contentUrl);
+      return res.json({ success: true, metadata });
+    } catch (err) {
+      debugLog("Could not fetch post metadata:", err.message);
+      return res.status(422).json({
+        success: false,
+        message:
+          platform === "instagram" && !INSTAGRAM_OEMBED_ACCESS_TOKEN
+            ? "Instagram needs Meta oEmbed access before Oscal can auto-fill this. Add the title manually for now."
+            : "Could not auto-fill this post. Add the title manually."
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/dashboard/videos",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-videos-add", 60_000, 20),
+  async (req, res) => {
+    const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+    const platform = normalizeContentPlatform(req.body.platform);
+    const contentUrl = normalizeOptionalUrl(req.body.contentUrl, 1000);
+    let title = cleanText(req.body.title, 120);
+    let thumbnailUrl = normalizeOptionalUrl(req.body.thumbnailUrl, 1000);
+
+    if (!platform) {
+      return res.status(400).json({ success: false, message: "Choose TikTok, Instagram, or YouTube." });
+    }
+
+    if (!contentUrl || !isValidPlatformPostUrl(platform, contentUrl)) {
+      return res.status(400).json({ success: false, message: `Enter a valid ${getPlatformLabel(platform)} URL.` });
+    }
+
+    if (!title || !thumbnailUrl) {
+      try {
+        const metadata = await fetchPlatformPostMetadata(platform, contentUrl);
+        title = title || metadata.title;
+        thumbnailUrl = thumbnailUrl || metadata.thumbnailUrl;
+      } catch (err) {
+        debugLog("Could not auto-fill video before save:", err.message);
+      }
+    }
+
     if (!title) {
-      return res.status(400).json({ success: false, message: "Add a title or short label." });
+      return res.status(400).json({
+        success: false,
+        message: "Paste a URL Oscal can read, or add a title or short label."
+      });
     }
 
     const bucket = getCreatorVideoBucket(creator);

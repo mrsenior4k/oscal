@@ -64,10 +64,13 @@ test("dashboard shows dated support activity and platform video attribution cont
   assert.match(server, /creatorVideos/);
   assert.match(server, /supportRecords/);
   assert.match(server, /app\.get\("\/api\/dashboard\/videos"/);
+  assert.match(server, /\/api\/dashboard\/videos\/metadata/);
+  assert.match(server, /https:\/\/www\.tiktok\.com\/oembed/);
   assert.match(server, /app\.post\(\s*"\/support\/attribute-video"/);
   assert.match(viewer, /Which video made you want to support/);
   assert.match(viewer, /showVideoAttributionPrompt/);
   assert.match(viewer, /sourcePlatform/);
+  assert.match(dashboard, /Post details filled automatically/);
 });
 
 test("browser debug logs are not leaking profile or response details", () => {

@@ -204,6 +204,23 @@
       font-weight: 800;
     }
 
+    .form-status {
+      min-height: 18px;
+      margin-top: 8px;
+      color: #aeb8d6;
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1.35;
+    }
+
+    .form-status.success {
+      color: #7dffd6;
+    }
+
+    .form-status.warn {
+      color: #ffd580;
+    }
+
     .platform-stats,
     .platform-links,
     .video-list {
@@ -515,7 +532,7 @@
     <section class="main dashboard-row">
       <div class="card">
         <div class="label">Eligible videos</div>
-        <p class="sub">Add TikTok or Instagram posts supporters can choose after they support. YouTube videos are imported when possible after YouTube login.</p>
+        <p class="sub">Paste a TikTok or Instagram post URL. Oscal will try to fill the title and thumbnail automatically; use the fields below only if the platform blocks it.</p>
 
         <select id="eligiblePlatform" class="form-control">
           <option value="tiktok">TikTok</option>
@@ -523,8 +540,9 @@
         </select>
 
         <input id="eligibleUrl" class="form-control" placeholder="Public video or post URL">
-        <input id="eligibleTitle" class="form-control" placeholder="Title or short label">
-        <input id="eligibleThumbnail" class="form-control" placeholder="Optional thumbnail image URL">
+        <div class="form-status" id="metadataStatus"></div>
+        <input id="eligibleTitle" class="form-control" placeholder="Auto-filled title or short label">
+        <input id="eligibleThumbnail" class="form-control" placeholder="Auto-filled thumbnail URL">
 
         <button class="btn" id="addEligibleVideoBtn" style="margin-top:12px;" onclick="addEligibleVideo()">
           Add video
@@ -554,6 +572,8 @@
     let publicLink = "";
 let currentProfile = null;
 let creatorVideosCache = [];
+let metadataLookupTimer = null;
+let metadataLookupNonce = 0;
 
 const PLATFORM_LABELS = {
   tiktok: "TikTok",
@@ -799,6 +819,87 @@ function renderMostSupportedVideos(videos = [], summary = {}) {
   list.innerHTML = rows.join("");
 }
 
+function setMetadataStatus(message = "", tone = "") {
+  const status = document.getElementById("metadataStatus");
+  if (!status) return;
+
+  status.textContent = message;
+  status.className = `form-status${tone ? ` ${tone}` : ""}`;
+}
+
+function getEligibleVideoDraft() {
+  return {
+    platform: document.getElementById("eligiblePlatform").value,
+    contentUrl: document.getElementById("eligibleUrl").value.trim(),
+    title: document.getElementById("eligibleTitle").value.trim(),
+    thumbnailUrl: document.getElementById("eligibleThumbnail").value.trim()
+  };
+}
+
+async function lookupEligibleVideoMetadata(options = {}) {
+  const draft = getEligibleVideoDraft();
+  const shouldLookup = draft.contentUrl.length > 12;
+
+  if (!shouldLookup) {
+    if (!options.silent) setMetadataStatus("");
+    return false;
+  }
+
+  const nonce = ++metadataLookupNonce;
+  if (!options.silent) setMetadataStatus("Looking up post details...");
+
+  try {
+    const res = await fetch("/api/dashboard/videos/metadata", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        platform: draft.platform,
+        contentUrl: draft.contentUrl
+      })
+    });
+    const data = await res.json();
+
+    if (nonce !== metadataLookupNonce) return false;
+
+    if (!data.success || !data.metadata) {
+      throw new Error(data.message || "Could not auto-fill this post.");
+    }
+
+    const titleInput = document.getElementById("eligibleTitle");
+    const thumbnailInput = document.getElementById("eligibleThumbnail");
+    const metadata = data.metadata;
+
+    if (!titleInput.value.trim() && metadata.title) {
+      titleInput.value = metadata.title;
+    }
+
+    if (!thumbnailInput.value.trim() && metadata.thumbnailUrl) {
+      thumbnailInput.value = metadata.thumbnailUrl;
+    }
+
+    if (!options.silent) {
+      setMetadataStatus("Post details filled automatically.", "success");
+    }
+
+    return true;
+  } catch (err) {
+    if (nonce !== metadataLookupNonce) return false;
+
+    if (!options.silent) {
+      setMetadataStatus(err.message || "Could not auto-fill this post. Add the title manually.", "warn");
+    }
+
+    return false;
+  }
+}
+
+function scheduleEligibleVideoMetadataLookup() {
+  clearTimeout(metadataLookupTimer);
+  metadataLookupTimer = setTimeout(() => {
+    lookupEligibleVideoMetadata();
+  }, 650);
+}
+
 async function refreshEligibleVideos() {
   const res = await fetch("/api/dashboard/videos");
   const data = await res.json();
@@ -866,17 +967,14 @@ async function refreshEligibleVideos() {
 
 async function addEligibleVideo() {
   const button = document.getElementById("addEligibleVideoBtn");
-  const payload = {
-    platform: document.getElementById("eligiblePlatform").value,
-    contentUrl: document.getElementById("eligibleUrl").value.trim(),
-    title: document.getElementById("eligibleTitle").value.trim(),
-    thumbnailUrl: document.getElementById("eligibleThumbnail").value.trim()
-  };
-
   setEligibleVideoError("");
 
   try {
     button.disabled = true;
+    button.innerText = "Checking...";
+    await lookupEligibleVideoMetadata({ silent: true });
+    const payload = getEligibleVideoDraft();
+
     button.innerText = "Adding...";
 
     const res = await fetch("/api/dashboard/videos", {
@@ -893,6 +991,7 @@ async function addEligibleVideo() {
     document.getElementById("eligibleUrl").value = "";
     document.getElementById("eligibleTitle").value = "";
     document.getElementById("eligibleThumbnail").value = "";
+    setMetadataStatus("");
     await refreshEligibleVideos();
   } catch (err) {
     setEligibleVideoError(err.message || "Could not add video.");
@@ -931,6 +1030,13 @@ async function deleteEligibleVideo(videoId) {
 
   await refreshEligibleVideos();
 }
+
+document.getElementById("eligibleUrl").addEventListener("input", scheduleEligibleVideoMetadataLookup);
+document.getElementById("eligibleUrl").addEventListener("blur", () => lookupEligibleVideoMetadata());
+document.getElementById("eligiblePlatform").addEventListener("change", () => {
+  setMetadataStatus("");
+  lookupEligibleVideoMetadata();
+});
 
     loadDashboard();
   </script>
