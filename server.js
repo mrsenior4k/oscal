@@ -1346,10 +1346,15 @@ debugLog("EVENT RECEIVED:", {
     selfSupportTest === true ||
     selfSupportTest === "true" ||
     selfSupportTest === "1";
+  const supporterViewMode =
+    supporterView === true ||
+    supporterView === "true" ||
+    req.query.view === "supporter";
   const isCreatorOwnerRequest =
     isLoggedInCreatorForSlug(req, creator) ||
     isKnownCreatorOwnerDevice(req, creator, deviceFamily);
-  const allowSelfSupportTest = selfSupportTestMode;
+  const allowSelfSupportTest =
+    selfSupportTestMode || (supporterViewMode && isCreatorOwnerRequest);
 
   if (isCreatorOwnerRequest && !allowSelfSupportTest) {
     return res.json({

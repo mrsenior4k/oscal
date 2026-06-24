@@ -2746,6 +2746,7 @@ const creator = decodeURIComponent(rawCreator || "Alex").trim();
     const forceSupporterView = params.get("view") === "supporter";
     const selfSupportTestMode =
       params.get("selftest") === "1" || params.get("selftest") === "true";
+    const ownerSelfSupportTestMode = selfSupportTestMode || forceSupporterView;
     let anonId = localStorage.getItem("anonId");
 
 if (!anonId) {
@@ -3039,7 +3040,7 @@ function loggedInCreatorOwnsIsland() {
 
 function updateCreatorOwnerMode() {
   isCreatorViewingOwnIsland = loggedInCreatorOwnsIsland();
-  const ownerBlocked = isCreatorViewingOwnIsland && !selfSupportTestMode;
+  const ownerBlocked = isCreatorViewingOwnIsland && !ownerSelfSupportTestMode;
 
   const watchBtn = document.getElementById("watchBtn");
   const watchBtnLabel = watchBtn?.querySelector("span");
@@ -3057,7 +3058,7 @@ function updateCreatorOwnerMode() {
 }
 
 function handleMainAction() {
-  if (isCreatorViewingOwnIsland && !selfSupportTestMode) {
+  if (isCreatorViewingOwnIsland && !ownerSelfSupportTestMode) {
     window.location.href = "/dashboard";
     return;
   }
@@ -5214,7 +5215,7 @@ body: JSON.stringify({
 }
 
     async function startAd() {
-  if (isCreatorViewingOwnIsland && !selfSupportTestMode) {
+  if (isCreatorViewingOwnIsland && !ownerSelfSupportTestMode) {
     window.location.href = "/dashboard";
     return;
   }
