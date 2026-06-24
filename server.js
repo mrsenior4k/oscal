@@ -1299,8 +1299,12 @@ function getCreatorVideosList(creatorKey, platform = "") {
 function getEligibleVideos(creatorKey, platform, limit = 0) {
   const normalizedSource = normalizeSourcePlatform(platform, "direct");
   const contentPlatform = normalizeContentPlatform(normalizedSource);
-  const videos = getCreatorVideosList(creatorKey, contentPlatform)
+  const allVideos = getCreatorVideosList(creatorKey)
     .filter(video => video.isEligible !== false);
+  const platformVideos = contentPlatform
+    ? allVideos.filter(video => video.platform === contentPlatform)
+    : allVideos;
+  const videos = platformVideos.length ? platformVideos : allVideos;
 
   return limit > 0 ? videos.slice(0, limit) : videos;
 }
@@ -2579,7 +2583,14 @@ app.post("/support/attribute-video", enforceRateLimit("support-attribute-video",
     }
 
     const recordSourcePlatform = normalizeSourcePlatform(record.sourcePlatform, "direct");
-    const platformMatches = recordSourcePlatform === "direct" || video.platform === recordSourcePlatform;
+    const matchingPlatformVideos = recordSourcePlatform === "direct"
+      ? []
+      : getCreatorVideosList(creatorKey, recordSourcePlatform)
+        .filter(item => item.isEligible !== false);
+    const platformMatches =
+      recordSourcePlatform === "direct" ||
+      video.platform === recordSourcePlatform ||
+      matchingPlatformVideos.length === 0;
 
     if (!platformMatches || video.isEligible === false) {
       return res.status(400).json({ success: false, message: "Video is not eligible for this platform." });
