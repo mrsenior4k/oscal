@@ -221,6 +221,33 @@
       color: #ffd580;
     }
 
+    .thumbnail-upload-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .thumbnail-upload-row .form-control {
+      flex: 1 1 220px;
+      margin-top: 0;
+    }
+
+    .thumbnail-preview {
+      width: 76px;
+      height: 52px;
+      display: none;
+      border-radius: 10px;
+      object-fit: cover;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0,0,0,0.25);
+    }
+
+    .thumbnail-preview.is-visible {
+      display: block;
+    }
+
     .platform-stats,
     .platform-links,
     .video-list {
@@ -532,17 +559,24 @@
     <section class="main dashboard-row">
       <div class="card">
         <div class="label">Eligible videos</div>
-        <p class="sub">Paste a TikTok or Instagram post URL. Oscal will try to fill the title and thumbnail automatically; use the fields below only if the platform blocks it.</p>
+        <p class="sub">Paste a TikTok, Instagram, or YouTube URL. Oscal will try to fill the title and thumbnail automatically; use the fallback fields only if the platform blocks it.</p>
 
         <select id="eligiblePlatform" class="form-control">
           <option value="tiktok">TikTok</option>
           <option value="instagram">Instagram</option>
+          <option value="youtube">YouTube</option>
         </select>
 
         <input id="eligibleUrl" class="form-control" placeholder="Public video or post URL">
         <div class="form-status" id="metadataStatus"></div>
         <input id="eligibleTitle" class="form-control" placeholder="Auto-filled title or short label">
         <input id="eligibleThumbnail" class="form-control" placeholder="Auto-filled thumbnail URL">
+        <label class="field-label" for="eligibleThumbnailFile">Thumbnail image upload</label>
+        <p class="field-hint">Optional fallback if the platform will not provide a thumbnail.</p>
+        <div class="thumbnail-upload-row">
+          <input id="eligibleThumbnailFile" class="form-control" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+          <img id="eligibleThumbnailPreview" class="thumbnail-preview" alt="">
+        </div>
 
         <button class="btn" id="addEligibleVideoBtn" style="margin-top:12px;" onclick="addEligibleVideo()">
           Add video
@@ -574,6 +608,7 @@ let currentProfile = null;
 let creatorVideosCache = [];
 let metadataLookupTimer = null;
 let metadataLookupNonce = 0;
+let selectedThumbnailImageData = "";
 
 const PLATFORM_LABELS = {
   tiktok: "TikTok",
@@ -827,12 +862,68 @@ function setMetadataStatus(message = "", tone = "") {
   status.className = `form-status${tone ? ` ${tone}` : ""}`;
 }
 
+function clearThumbnailUpload() {
+  selectedThumbnailImageData = "";
+
+  const fileInput = document.getElementById("eligibleThumbnailFile");
+  const preview = document.getElementById("eligibleThumbnailPreview");
+
+  if (fileInput) fileInput.value = "";
+  if (preview) {
+    preview.removeAttribute("src");
+    preview.classList.remove("is-visible");
+  }
+}
+
+function handleThumbnailUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  const preview = document.getElementById("eligibleThumbnailPreview");
+
+  selectedThumbnailImageData = "";
+
+  if (!file) {
+    if (preview) {
+      preview.removeAttribute("src");
+      preview.classList.remove("is-visible");
+    }
+    return;
+  }
+
+  if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
+    setEligibleVideoError("Upload a PNG, JPG, WebP, or GIF thumbnail image.");
+    clearThumbnailUpload();
+    return;
+  }
+
+  if (file.size > 3 * 1024 * 1024) {
+    setEligibleVideoError("Thumbnail image must be smaller than 3 MB.");
+    clearThumbnailUpload();
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    selectedThumbnailImageData = String(reader.result || "");
+    if (preview && selectedThumbnailImageData) {
+      preview.src = selectedThumbnailImageData;
+      preview.classList.add("is-visible");
+    }
+    setEligibleVideoError("");
+  };
+  reader.onerror = () => {
+    setEligibleVideoError("Could not read that thumbnail image.");
+    clearThumbnailUpload();
+  };
+  reader.readAsDataURL(file);
+}
+
 function getEligibleVideoDraft() {
   return {
     platform: document.getElementById("eligiblePlatform").value,
     contentUrl: document.getElementById("eligibleUrl").value.trim(),
     title: document.getElementById("eligibleTitle").value.trim(),
-    thumbnailUrl: document.getElementById("eligibleThumbnail").value.trim()
+    thumbnailUrl: document.getElementById("eligibleThumbnail").value.trim(),
+    thumbnailImageData: selectedThumbnailImageData
   };
 }
 
@@ -991,6 +1082,7 @@ async function addEligibleVideo() {
     document.getElementById("eligibleUrl").value = "";
     document.getElementById("eligibleTitle").value = "";
     document.getElementById("eligibleThumbnail").value = "";
+    clearThumbnailUpload();
     setMetadataStatus("");
     await refreshEligibleVideos();
   } catch (err) {
@@ -1037,6 +1129,7 @@ document.getElementById("eligiblePlatform").addEventListener("change", () => {
   setMetadataStatus("");
   lookupEligibleVideoMetadata();
 });
+document.getElementById("eligibleThumbnailFile").addEventListener("change", handleThumbnailUpload);
 
     loadDashboard();
   </script>

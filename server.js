@@ -478,6 +478,8 @@ function resolveSqlitePath() {
 
 const DB_PATH = resolveSqlitePath();
 const DATA_DIR = path.dirname(DB_PATH);
+const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+const THUMBNAIL_UPLOAD_DIR = path.join(UPLOADS_DIR, "thumbnails");
 const hasConfiguredPersistentStore = Boolean(
   process.env.DATA_DIR ||
   process.env.SQLITE_PATH ||
@@ -494,6 +496,12 @@ if (process.env.NODE_ENV === "production" && !hasConfiguredPersistentStore) {
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
+
+if (!fs.existsSync(THUMBNAIL_UPLOAD_DIR)) {
+  fs.mkdirSync(THUMBNAIL_UPLOAD_DIR, { recursive: true });
+}
+
+app.use("/uploads", express.static(UPLOADS_DIR));
 
 const db = new DatabaseSync(DB_PATH);
 
@@ -1033,6 +1041,7 @@ const SOURCE_PLATFORMS = new Set(["tiktok", "instagram", "youtube", "direct"]);
 const ATTRIBUTION_TYPES = new Set(["selected_video", "creator_only", "skipped"]);
 const ATTRIBUTION_WINDOW_MS = 30 * 60 * 1000;
 const METADATA_FETCH_TIMEOUT_MS = 6500;
+const MAX_THUMBNAIL_UPLOAD_BYTES = 3 * 1024 * 1024;
 const INSTAGRAM_OEMBED_ACCESS_TOKEN =
   process.env.INSTAGRAM_OEMBED_ACCESS_TOKEN ||
   process.env.META_OEMBED_ACCESS_TOKEN ||
@@ -1102,6 +1111,31 @@ function isValidPlatformPostUrl(platform, value) {
 function getVideoIdFromContentUrl(platform, contentUrl) {
   const base = `${normalizeContentPlatform(platform)}|${normalizeOptionalUrl(contentUrl, 1000)}`;
   return `video_${hashFingerprint(base).slice(0, 18)}`;
+}
+
+function saveThumbnailUpload(dataUrl, creatorKey, videoId) {
+  const raw = String(dataUrl || "").trim();
+  if (!raw) return "";
+
+  const match = raw.match(/^data:image\/(png|jpe?g|webp|gif);base64,([a-z0-9+/=\s]+)$/i);
+  if (!match) {
+    throw new Error("Upload a PNG, JPG, WebP, or GIF thumbnail image.");
+  }
+
+  const extension = match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();
+  const buffer = Buffer.from(match[2].replace(/\s/g, ""), "base64");
+
+  if (!buffer.length || buffer.length > MAX_THUMBNAIL_UPLOAD_BYTES) {
+    throw new Error("Thumbnail image must be smaller than 3 MB.");
+  }
+
+  const safeCreator = cleanText(creatorKey, 80).replace(/[^a-z0-9_-]/gi, "_") || "creator";
+  const safeVideoId = cleanText(videoId, 80).replace(/[^a-z0-9_-]/gi, "_") || hashFingerprint(raw).slice(0, 16);
+  const filename = `${safeCreator}_${safeVideoId}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${extension}`;
+  const filePath = path.join(THUMBNAIL_UPLOAD_DIR, filename);
+
+  fs.writeFileSync(filePath, buffer);
+  return `/uploads/thumbnails/${filename}`;
 }
 
 async function fetchJsonWithTimeout(url) {
@@ -2384,6 +2418,7 @@ app.post(
     const contentUrl = normalizeOptionalUrl(req.body.contentUrl, 1000);
     let title = cleanText(req.body.title, 120);
     let thumbnailUrl = normalizeOptionalUrl(req.body.thumbnailUrl, 1000);
+    const thumbnailImageData = String(req.body.thumbnailImageData || "");
 
     if (!platform) {
       return res.status(400).json({ success: false, message: "Choose TikTok, Instagram, or YouTube." });
@@ -2415,8 +2450,18 @@ app.post(
       return res.status(409).json({ success: false, message: "That post is already saved." });
     }
 
+    const videoId = getVideoIdFromContentUrl(platform, contentUrl);
+
+    if (thumbnailImageData) {
+      try {
+        thumbnailUrl = saveThumbnailUpload(thumbnailImageData, creator, videoId);
+      } catch (err) {
+        return res.status(400).json({ success: false, message: err.message || "Could not save thumbnail image." });
+      }
+    }
+
     const video = normalizeCreatorVideoRecord({
-      id: getVideoIdFromContentUrl(platform, contentUrl),
+      id: videoId,
       creatorSlug: creator,
       platform,
       title,
