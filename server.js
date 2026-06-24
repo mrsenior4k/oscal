@@ -32,6 +32,8 @@ let supporterStats = {};
 let creatorStats = {};
 let creatorProfiles = {};
 let creatorOwnerDevices = {};
+let creatorVideos = {};
+let supportRecords = {};
 
 app.use(session({
   secret: SESSION_SECRET,
@@ -45,9 +47,28 @@ function redirectHome(req, res) {
   return res.redirect("/dashboard");
 }
 
-function sendViewerPage(res) {
+function sendViewerPage(req, res, sourcePlatform = "direct") {
+  const normalizedSource = normalizeSourcePlatform(sourcePlatform, "direct");
+  const creatorKey = getCanonicalCreatorKey(req.params?.creator || req.params?.[0] || "", req);
+
+  if (req.session && creatorKey) {
+    req.session.viewerSourcePlatforms = req.session.viewerSourcePlatforms || {};
+    req.session.viewerSourcePlatforms[creatorKey] = normalizedSource;
+  }
+
   res.set("Cache-Control", "no-store, max-age=0");
-  return res.sendFile(path.join(__dirname, "public", "viewer.html"));
+
+  try {
+    const html = fs.readFileSync(path.join(__dirname, "public", "viewer.html"), "utf8");
+    const bootstrapScript = `<script>window.__OSCAL_VIEWER_BOOTSTRAP__=${JSON.stringify({
+      sourcePlatform: normalizedSource
+    })};</script>`;
+
+    return res.send(html.replace("</head>", `${bootstrapScript}\n</head>`));
+  } catch (err) {
+    console.error("Could not render viewer page:", err);
+    return res.status(500).send("Could not load support page.");
+  }
 }
 
 const LEGACY_CREATOR_SLUGS = new Set([
@@ -320,6 +341,55 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_SECRET,
   redirectUri
 );
+
+async function importRecentYouTubeVideos(profile, youtube, channelId) {
+  if (!profile?.slug || !channelId || !youtube?.search?.list) return;
+
+  try {
+    const response = await youtube.search.list({
+      part: ["snippet"],
+      channelId,
+      maxResults: 10,
+      order: "date",
+      type: "video"
+    });
+
+    const creatorKey = getCanonicalCreatorKey(profile.slug);
+    const bucket = getCreatorVideoBucket(creatorKey);
+    let changed = false;
+
+    (response.data.items || []).forEach(item => {
+      const platformVideoId = item.id?.videoId;
+      if (!platformVideoId) return;
+
+      const normalized = normalizeCreatorVideoRecord({
+        id: `youtube_${platformVideoId}`,
+        creatorSlug: creatorKey,
+        platform: "youtube",
+        platformVideoId,
+        title: item.snippet?.title || "YouTube video",
+        thumbnailUrl:
+          item.snippet?.thumbnails?.high?.url ||
+          item.snippet?.thumbnails?.medium?.url ||
+          item.snippet?.thumbnails?.default?.url ||
+          "",
+        contentUrl: `https://www.youtube.com/watch?v=${encodeURIComponent(platformVideoId)}`,
+        publishedAt: Date.parse(item.snippet?.publishedAt || "") || Date.now(),
+        isEligible: true
+      }, creatorKey);
+
+      if (normalized && JSON.stringify(bucket[normalized.id]) !== JSON.stringify(normalized)) {
+        bucket[normalized.id] = normalized;
+        changed = true;
+      }
+    });
+
+    if (changed) saveData();
+  } catch (err) {
+    console.error("Could not import recent YouTube videos:", err.message || err);
+  }
+}
+
 app.get("/auth/youtube", (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: "offline",
@@ -366,10 +436,12 @@ app.get("/auth/youtube/callback", async (req, res) => {
   const creatorProfile = {
     slug: channel.snippet.customUrl || channel.id,
     displayName: channel.snippet.title,
-    profileImage
+    profileImage,
+    youtubeChannelId: channel.id
   };
 
   storeCreatorProfile(creatorProfile, channel.id);
+  await importRecentYouTubeVideos(creatorProfile, youtube, channel.id);
   rememberCreatorOwnerDevice(req, creatorProfile.slug);
   saveData();
   req.session.creatorProfile = creatorProfile;
@@ -406,7 +478,6 @@ function resolveSqlitePath() {
 
 const DB_PATH = resolveSqlitePath();
 const DATA_DIR = path.dirname(DB_PATH);
-const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const hasConfiguredPersistentStore = Boolean(
   process.env.DATA_DIR ||
   process.env.SQLITE_PATH ||
@@ -424,15 +495,7 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
 const db = new DatabaseSync(DB_PATH);
-
-app.use("/uploads", express.static(UPLOAD_DIR, {
-  maxAge: "7d"
-}));
 
 db.exec(`
   PRAGMA journal_mode = WAL;
@@ -491,6 +554,8 @@ function migrateJsonDataIfNeeded() {
     writeState("supporterStats", data.supporterStats || {});
     writeState("creatorProfiles", data.creatorProfiles || {});
     writeState("creatorOwnerDevices", data.creatorOwnerDevices || {});
+    writeState("creatorVideos", data.creatorVideos || {});
+    writeState("supportRecords", data.supportRecords || {});
 
     console.log("Migrated data.json into data/app.sqlite");
   } catch (err) {
@@ -507,6 +572,8 @@ supporterProfiles = readState("supporterProfiles", {});
 supporterStats = readState("supporterStats", {});
 creatorProfiles = readState("creatorProfiles", {});
 creatorOwnerDevices = readState("creatorOwnerDevices", {});
+creatorVideos = readState("creatorVideos", {});
+supportRecords = readState("supportRecords", {});
 
 // ---------- Helpers ----------
 function hashFingerprint(fingerprintString) {
@@ -786,6 +853,8 @@ function saveData() {
     writeState("supporterStats", supporterStats);
     writeState("creatorProfiles", creatorProfiles);
     writeState("creatorOwnerDevices", creatorOwnerDevices);
+    writeState("creatorVideos", creatorVideos);
+    writeState("supportRecords", supportRecords);
 
     db.exec("COMMIT");
   } catch (err) {
@@ -959,6 +1028,310 @@ const STICKER_EXTENSION_PRIORITY = {
   ".m4v": 3,
   ".mov": 4
 };
+const CONTENT_PLATFORMS = new Set(["tiktok", "instagram", "youtube"]);
+const SOURCE_PLATFORMS = new Set(["tiktok", "instagram", "youtube", "direct"]);
+const ATTRIBUTION_TYPES = new Set(["selected_video", "creator_only", "skipped"]);
+const ATTRIBUTION_WINDOW_MS = 30 * 60 * 1000;
+
+function normalizeSourcePlatform(value, fallback = "direct") {
+  const platform = String(value || "").trim().toLowerCase();
+  return SOURCE_PLATFORMS.has(platform) ? platform : fallback;
+}
+
+function normalizeContentPlatform(value) {
+  const platform = String(value || "").trim().toLowerCase();
+  return CONTENT_PLATFORMS.has(platform) ? platform : "";
+}
+
+function getPlatformLabel(platform) {
+  return {
+    tiktok: "TikTok",
+    instagram: "Instagram",
+    youtube: "YouTube",
+    direct: "Direct"
+  }[normalizeSourcePlatform(platform)] || "Direct";
+}
+
+function cleanText(value, maxLength = 160) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizeOptionalUrl(value, maxLength = 800) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const url = new URL(raw);
+    if (!["http:", "https:"].includes(url.protocol)) return "";
+    return url.toString().slice(0, maxLength);
+  } catch (_) {
+    return "";
+  }
+}
+
+function isValidPlatformPostUrl(platform, value) {
+  const normalizedPlatform = normalizeContentPlatform(platform);
+  const raw = normalizeOptionalUrl(value, 1000);
+  if (!normalizedPlatform || !raw) return false;
+
+  const host = new URL(raw).hostname.toLowerCase().replace(/^www\./, "");
+
+  if (normalizedPlatform === "tiktok") {
+    return host === "tiktok.com" || host === "vm.tiktok.com";
+  }
+
+  if (normalizedPlatform === "instagram") {
+    return host === "instagram.com";
+  }
+
+  if (normalizedPlatform === "youtube") {
+    return host === "youtube.com" || host === "youtu.be";
+  }
+
+  return false;
+}
+
+function getVideoIdFromContentUrl(platform, contentUrl) {
+  const base = `${normalizeContentPlatform(platform)}|${normalizeOptionalUrl(contentUrl, 1000)}`;
+  return `video_${hashFingerprint(base).slice(0, 18)}`;
+}
+
+function getCreatorVideoBucket(creatorKey) {
+  if (!creatorVideos[creatorKey] || typeof creatorVideos[creatorKey] !== "object") {
+    creatorVideos[creatorKey] = {};
+  }
+
+  return creatorVideos[creatorKey];
+}
+
+function normalizeCreatorVideoRecord(video, creatorKey) {
+  if (!video || typeof video !== "object") return null;
+
+  const platform = normalizeContentPlatform(video.platform);
+  if (!platform) return null;
+
+  const contentUrl = normalizeOptionalUrl(video.contentUrl || video.url, 1000);
+  const id = cleanText(video.id || video.videoId || getVideoIdFromContentUrl(platform, contentUrl), 80);
+  const title = cleanText(video.title || video.videoTitle || video.caption || "Untitled video", 120);
+  const now = Date.now();
+
+  return {
+    id,
+    creatorSlug: creatorKey,
+    platform,
+    platformVideoId: cleanText(video.platformVideoId || video.videoId || "", 120),
+    title,
+    thumbnailUrl: normalizeOptionalUrl(video.thumbnailUrl || video.videoThumbnail, 1000),
+    contentUrl,
+    publishedAt: Number(video.publishedAt || 0),
+    isEligible: video.isEligible !== false,
+    createdAt: Number(video.createdAt || now)
+  };
+}
+
+function normalizeCreatorVideoState() {
+  let changed = false;
+
+  Object.entries(creatorVideos || {}).forEach(([creator, bucket]) => {
+    const creatorKey = getCanonicalCreatorKey(creator);
+    if (!creatorKey || !bucket || typeof bucket !== "object") return;
+
+    const target = getCreatorVideoBucket(creatorKey);
+    Object.values(bucket).forEach(video => {
+      const normalized = normalizeCreatorVideoRecord(video, creatorKey);
+      if (!normalized) {
+        changed = true;
+        return;
+      }
+
+      target[normalized.id] = normalized;
+      if (creatorKey !== creator || JSON.stringify(video) !== JSON.stringify(normalized)) {
+        changed = true;
+      }
+    });
+
+    if (creatorKey !== creator) {
+      delete creatorVideos[creator];
+      changed = true;
+    }
+  });
+
+  Object.entries(creatorStats || {}).forEach(([creator, stats]) => {
+    const creatorKey = getCanonicalCreatorKey(creator);
+    if (!creatorKey || !stats?.videos) return;
+
+    Object.values(stats.videos).forEach(video => {
+      const normalized = normalizeCreatorVideoRecord({
+        id: video.videoId,
+        videoId: video.videoId,
+        videoTitle: video.videoTitle,
+        videoThumbnail: video.videoThumbnail,
+        platform: video.platform,
+        isEligible: false
+      }, creatorKey);
+
+      if (normalized && !getCreatorVideoBucket(creatorKey)[normalized.id]) {
+        getCreatorVideoBucket(creatorKey)[normalized.id] = normalized;
+        changed = true;
+      }
+    });
+  });
+
+  if (changed) saveData();
+}
+
+function getCreatorVideosList(creatorKey, platform = "") {
+  const normalizedPlatform = normalizeContentPlatform(platform);
+  const videos = Object.values(getCreatorVideoBucket(creatorKey));
+
+  return videos
+    .filter(video => !normalizedPlatform || video.platform === normalizedPlatform)
+    .sort((a, b) => Number(b.publishedAt || b.createdAt || 0) - Number(a.publishedAt || a.createdAt || 0));
+}
+
+function getEligibleVideos(creatorKey, platform, limit = 0) {
+  const videos = getCreatorVideosList(creatorKey, platform)
+    .filter(video => video.isEligible !== false);
+
+  return limit > 0 ? videos.slice(0, limit) : videos;
+}
+
+function normalizeSupportRecord(record, creatorKey = "") {
+  if (!record || typeof record !== "object") return null;
+
+  const completedAt = Number(record.completedAt || record.time || Date.now());
+  const sourcePlatform = normalizeSourcePlatform(record.sourcePlatform, "direct");
+  const supportId = cleanText(record.supportId || `support_${hashFingerprint(`${creatorKey}|${record.anonId || ""}|${completedAt}`).slice(0, 24)}`, 80);
+  const attributionType = ATTRIBUTION_TYPES.has(record.attributionType)
+    ? record.attributionType
+    : "skipped";
+
+  return {
+    supportId,
+    creatorSlug: creatorKey || getCanonicalCreatorKey(record.creatorSlug || record.creator || ""),
+    anonId: String(record.anonId || "").trim(),
+    deviceProgressKey: String(record.deviceProgressKey || record.fingerprint || "").trim(),
+    sourcePlatform,
+    selectedVideoId: cleanText(record.selectedVideoId || "", 120),
+    attributionType,
+    completedAt,
+    attributedAt: Number(record.attributedAt || 0)
+  };
+}
+
+function hydrateSupportRecordsFromRecentSupports() {
+  let changed = false;
+
+  Object.entries(creatorStats || {}).forEach(([creator, stats]) => {
+    const creatorKey = getCanonicalCreatorKey(creator);
+    if (!creatorKey || !Array.isArray(stats?.recentSupports)) return;
+
+    stats.recentSupports.forEach(item => {
+      const completedAt = Number(item.time || Date.now());
+      const supportId = item.supportId ||
+        `legacy_${hashFingerprint(`${creatorKey}|${item.anonId || ""}|${completedAt}`).slice(0, 24)}`;
+      const normalized = normalizeSupportRecord({
+        supportId,
+        creatorSlug: creatorKey,
+        anonId: item.anonId,
+        deviceProgressKey: item.deviceProgressKey,
+        sourcePlatform: item.sourcePlatform || "direct",
+        selectedVideoId: item.selectedVideoId || "",
+        attributionType: item.attributionType || "skipped",
+        completedAt,
+        attributedAt: item.attributedAt || 0
+      }, creatorKey);
+
+      if (!supportRecords[supportId]) {
+        supportRecords[supportId] = normalized;
+        changed = true;
+      }
+
+      ["supportId", "sourcePlatform", "selectedVideoId", "attributionType", "attributedAt"].forEach(key => {
+        const next = key === "attributedAt"
+          ? normalized.attributedAt
+          : normalized[key] || (key === "attributionType" ? "skipped" : "");
+        if (item[key] !== next) {
+          item[key] = next;
+          changed = true;
+        }
+      });
+    });
+  });
+
+  Object.entries(supportRecords || {}).forEach(([supportId, record]) => {
+    const normalized = normalizeSupportRecord(record, record.creatorSlug);
+    if (!normalized) {
+      delete supportRecords[supportId];
+      changed = true;
+      return;
+    }
+
+    if (supportId !== normalized.supportId) {
+      delete supportRecords[supportId];
+      supportRecords[normalized.supportId] = normalized;
+      changed = true;
+    } else if (JSON.stringify(record) !== JSON.stringify(normalized)) {
+      supportRecords[supportId] = normalized;
+      changed = true;
+    }
+  });
+
+  if (changed) saveData();
+}
+
+function getSupportRecordsForCreator(creatorKey) {
+  return Object.values(supportRecords || {})
+    .filter(record => getCanonicalCreatorKey(record.creatorSlug) === creatorKey)
+    .sort((a, b) => Number(b.completedAt || 0) - Number(a.completedAt || 0));
+}
+
+function getPlatformCountsForCreator(creatorKey) {
+  const counts = { tiktok: 0, instagram: 0, youtube: 0, direct: 0 };
+
+  getSupportRecordsForCreator(creatorKey).forEach(record => {
+    counts[normalizeSourcePlatform(record.sourcePlatform)]++;
+  });
+
+  return counts;
+}
+
+function getVideoAttributionStats(creatorKey) {
+  const videoCounts = {};
+  let creatorOnly = 0;
+  let noVideoSelected = 0;
+
+  getSupportRecordsForCreator(creatorKey).forEach(record => {
+    if (record.attributionType === "selected_video" && record.selectedVideoId) {
+      videoCounts[record.selectedVideoId] = Number(videoCounts[record.selectedVideoId] || 0) + 1;
+      return;
+    }
+
+    if (record.attributionType === "creator_only") {
+      creatorOnly++;
+      return;
+    }
+
+    noVideoSelected++;
+  });
+
+  const videos = Object.entries(videoCounts)
+    .map(([videoId, count]) => {
+      const video = getCreatorVideoBucket(creatorKey)[videoId] || {};
+      return {
+        ...video,
+        id: videoId,
+        title: video.title || "Unknown video",
+        attributedSupports: count
+      };
+    })
+    .sort((a, b) => Number(b.attributedSupports || 0) - Number(a.attributedSupports || 0));
+
+  return { videos, creatorOnly, noVideoSelected };
+}
 
 function getSponsorAds() {
   try {
@@ -1305,12 +1678,16 @@ function getEquippedSupporterBadge(anonId, supportCountOverride = 0) {
 function attachSupporterBadges(item) {
   return {
     ...item,
+    sourcePlatform: normalizeSourcePlatform(item.sourcePlatform, "direct"),
+    attributionType: item.attributionType || "skipped",
     badges: getSupporterBadgeCollection(item.anonId),
     equippedBadge: getEquippedSupporterBadge(item.anonId)
   };
 }
 
 hydrateBadgeStateFromRecentSupports();
+normalizeCreatorVideoState();
+hydrateSupportRecordsFromRecentSupports();
 
 app.get("/api/stickers", enforceRateLimit("stickers", 60_000, 60), (req, res) => {
   res.json({
@@ -1333,7 +1710,8 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
   videoTitle = "Main support page",
   videoThumbnail = "",
   platform = "unknown",
-  selfSupportTest = false
+  selfSupportTest = false,
+  sourcePlatform = "direct"
 } = req.body;
 
 debugLog("EVENT RECEIVED:", {
@@ -1343,7 +1721,8 @@ debugLog("EVENT RECEIVED:", {
   timeZone,
   deviceFamily,
   supporterView,
-  selfSupportTest
+  selfSupportTest,
+  sourcePlatform
 });
 
   if (!type || !creator || !fingerprint || !timeZone) {
@@ -1351,6 +1730,10 @@ debugLog("EVENT RECEIVED:", {
   }
 
   const creatorKey = getCanonicalCreatorKey(creator, req);
+  const recordedSourcePlatform = normalizeSourcePlatform(
+    req.session?.viewerSourcePlatforms?.[creatorKey],
+    "direct"
+  );
   const selfSupportTestMode =
     selfSupportTest === true ||
     selfSupportTest === "true" ||
@@ -1492,6 +1875,7 @@ debugLog("EVENT RECEIVED:", {
     userData.dailyCount++;
     userData.lastComplete = now;
     userData.adStartTime = 0;
+    const supportId = `support_${crypto.randomBytes(12).toString("hex")}`;
 
     // update creator
     if (!creatorStats[creatorKey]) {
@@ -1517,13 +1901,31 @@ const equippedBadge = getEquippedSupporterBadge(anonId);
 const savedProfile = supporterProfiles[anonId] || {};
 
 creatorStats[creatorKey].recentSupports.unshift({
+  supportId,
   name: savedProfile.name || `Anonymous #${anonId || "0000"}`,
   pfp: savedProfile.pfp || "",
   anonId,
+  deviceProgressKey,
+  sourcePlatform: recordedSourcePlatform,
+  selectedVideoId: "",
+  attributionType: "skipped",
+  attributedAt: 0,
   equippedBadge,
   emoji: "",
   time: now
 });
+
+supportRecords[supportId] = {
+  supportId,
+  creatorSlug: creatorKey,
+  anonId: String(anonId || "").trim(),
+  deviceProgressKey,
+  sourcePlatform: recordedSourcePlatform,
+  selectedVideoId: "",
+  attributionType: "skipped",
+  completedAt: now,
+  attributedAt: 0
+};
 
 creatorStats[creatorKey].recentSupports = creatorStats[creatorKey].recentSupports.slice(0, 100);
 
@@ -1556,6 +1958,8 @@ creatorStats[creatorKey].videos[videoId].platform = platform;
       creator: creatorKey,
       fingerprint: deviceProgressKey,
       type: 'support_complete',
+      supportId,
+      sourcePlatform: recordedSourcePlatform,
       timeZone
     });
 
@@ -1569,6 +1973,8 @@ return res.json({
   success: true,
   supports: creatorStats[creatorKey].supports,
   creatorSupports: creatorSupportsForViewer,
+  supportId,
+  sourcePlatform: recordedSourcePlatform,
   badges,
   equippedBadge,
   mostSupportedVideo
@@ -1585,82 +1991,6 @@ function requireCreatorLogin(req, res, next) {
   rememberCreatorOwnerDevice(req, req.session.creatorProfile.slug, req.query.deviceFamily);
   next();
 }
-
-const TRACKED_THUMBNAIL_MAX_BYTES = 1_500_000;
-const TRACKED_THUMBNAIL_TYPES = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp"
-};
-
-function uploadedImageMatchesType(buffer, mimeType) {
-  if (mimeType === "image/jpeg") {
-    return buffer.length > 3 &&
-      buffer[0] === 0xff &&
-      buffer[1] === 0xd8 &&
-      buffer[2] === 0xff;
-  }
-
-  if (mimeType === "image/png") {
-    return buffer.length > 8 &&
-      buffer[0] === 0x89 &&
-      buffer.toString("ascii", 1, 4) === "PNG";
-  }
-
-  if (mimeType === "image/webp") {
-    return buffer.length > 12 &&
-      buffer.toString("ascii", 0, 4) === "RIFF" &&
-      buffer.toString("ascii", 8, 12) === "WEBP";
-  }
-
-  return false;
-}
-
-app.post(
-  "/api/dashboard/thumbnail",
-  requireCreatorLogin,
-  enforceRateLimit("dashboard-thumbnail", 60_000, 20),
-  (req, res) => {
-    const imageData = String(req.body.imageData || "");
-    const match = imageData.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
-
-    if (!match) {
-      return res.status(400).json({
-        success: false,
-        message: "Upload a JPG, PNG, or WebP thumbnail."
-      });
-    }
-
-    const mimeType = match[1];
-    const extension = TRACKED_THUMBNAIL_TYPES[mimeType];
-    const buffer = Buffer.from(match[2], "base64");
-
-    if (!buffer.length || buffer.length > TRACKED_THUMBNAIL_MAX_BYTES) {
-      return res.status(400).json({
-        success: false,
-        message: "Thumbnail must be under 1.5 MB."
-      });
-    }
-
-    if (!uploadedImageMatchesType(buffer, mimeType)) {
-      return res.status(400).json({
-        success: false,
-        message: "Thumbnail file type did not match the image data."
-      });
-    }
-
-    const creatorKey = compactCreatorSlug(req.session.creatorProfile.slug) || "creator";
-    const filename = `${creatorKey}-${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${extension}`;
-    const filePath = path.join(UPLOAD_DIR, filename);
-
-    fs.writeFileSync(filePath, buffer, { flag: "wx" });
-
-    res.json({
-      success: true,
-      url: `/uploads/${filename}`
-    });
-  }
-);
 
 app.get("/dashboard", requireCreatorLogin, (req, res) => {
   res.sendFile(path.join(__dirname, "public", "dashboard.html"));
@@ -1837,6 +2167,7 @@ app.post("/dev/reset", requireDevResetAccess, enforceRateLimit("dev-reset", 60_0
   events = [];
   supporterProfiles = {};
   supporterStats = {};
+  supportRecords = {};
 
   saveData();
 
@@ -1908,15 +2239,203 @@ app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
   const topVideos = videos
     .sort((a, b) => b.supports - a.supports)
     .slice(0, 5);
+  const attributionStats = getVideoAttributionStats(creator);
 
   res.json({
     creator,
     supports: creatorRecord.supports || 0,
     earnings: Number((creatorRecord.earnings || 0).toFixed(2)),
-    recentSupports: (creatorRecord.recentSupports || []).map(attachSupporterBadges),
+    recentSupports: (creatorRecord.recentSupports || [])
+      .sort((a, b) => Number(b.time || 0) - Number(a.time || 0))
+      .map(attachSupporterBadges),
     videos: creatorRecord.videos || {},
-    topVideos
+    topVideos,
+    platformCounts: getPlatformCountsForCreator(creator),
+    creatorVideos: getCreatorVideosList(creator),
+    mostSupportedVideos: attributionStats.videos,
+    attributionSummary: {
+      creatorOnly: attributionStats.creatorOnly,
+      noVideoSelected: attributionStats.noVideoSelected
+    }
   });
+});
+
+app.get("/api/dashboard/videos", requireCreatorLogin, (req, res) => {
+  const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+
+  res.json({
+    success: true,
+    videos: getCreatorVideosList(creator)
+  });
+});
+
+app.post(
+  "/api/dashboard/videos",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-videos-add", 60_000, 20),
+  (req, res) => {
+    const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+    const platform = normalizeContentPlatform(req.body.platform);
+    const contentUrl = normalizeOptionalUrl(req.body.contentUrl, 1000);
+    const title = cleanText(req.body.title, 120);
+    const thumbnailUrl = normalizeOptionalUrl(req.body.thumbnailUrl, 1000);
+
+    if (!platform) {
+      return res.status(400).json({ success: false, message: "Choose TikTok, Instagram, or YouTube." });
+    }
+
+    if (!contentUrl || !isValidPlatformPostUrl(platform, contentUrl)) {
+      return res.status(400).json({ success: false, message: `Enter a valid ${getPlatformLabel(platform)} URL.` });
+    }
+
+    if (!title) {
+      return res.status(400).json({ success: false, message: "Add a title or short label." });
+    }
+
+    const bucket = getCreatorVideoBucket(creator);
+    if (Object.values(bucket).some(video => video.contentUrl === contentUrl)) {
+      return res.status(409).json({ success: false, message: "That post is already saved." });
+    }
+
+    const video = normalizeCreatorVideoRecord({
+      id: getVideoIdFromContentUrl(platform, contentUrl),
+      creatorSlug: creator,
+      platform,
+      title,
+      thumbnailUrl,
+      contentUrl,
+      publishedAt: 0,
+      isEligible: true,
+      createdAt: Date.now()
+    }, creator);
+
+    bucket[video.id] = video;
+    saveData();
+
+    res.json({ success: true, video });
+  }
+);
+
+app.patch(
+  "/api/dashboard/videos/:videoId",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-videos-edit", 60_000, 40),
+  (req, res) => {
+    const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+    const bucket = getCreatorVideoBucket(creator);
+    const video = bucket[req.params.videoId];
+
+    if (!video) {
+      return res.status(404).json({ success: false, message: "Video not found." });
+    }
+
+    video.isEligible = req.body.isEligible !== false;
+    saveData();
+
+    res.json({ success: true, video });
+  }
+);
+
+app.delete(
+  "/api/dashboard/videos/:videoId",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-videos-delete", 60_000, 20),
+  (req, res) => {
+    const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+    const bucket = getCreatorVideoBucket(creator);
+
+    if (!bucket[req.params.videoId]) {
+      return res.status(404).json({ success: false, message: "Video not found." });
+    }
+
+    delete bucket[req.params.videoId];
+    saveData();
+
+    res.json({ success: true });
+  }
+);
+
+app.get("/support/eligible-videos", enforceRateLimit("eligible-videos", 60_000, 60), (req, res) => {
+  const creator = getCanonicalCreatorKey(req.query.creator, req);
+  const platform = normalizeContentPlatform(req.query.platform);
+
+  if (!creator || !platform) {
+    return res.json({ success: true, videos: [] });
+  }
+
+  res.json({
+    success: true,
+    videos: getEligibleVideos(creator, platform)
+  });
+});
+
+app.post("/support/attribute-video", enforceRateLimit("support-attribute-video", 60_000, 20), (req, res) => {
+  const {
+    creator,
+    supportId,
+    anonId,
+    fingerprint,
+    selectedVideoId = "",
+    attributionType
+  } = req.body;
+  const creatorKey = getCanonicalCreatorKey(creator, req);
+  const record = supportRecords[String(supportId || "")];
+
+  if (!creatorKey || !record || record.creatorSlug !== creatorKey) {
+    return res.status(404).json({ success: false, message: "Support record not found." });
+  }
+
+  if (String(record.anonId) !== String(anonId || "")) {
+    return res.status(403).json({ success: false, message: "Supporter mismatch." });
+  }
+
+  const deviceProgressKey = getDeviceProgressKey(req, fingerprint);
+  if (record.deviceProgressKey && record.deviceProgressKey !== deviceProgressKey) {
+    return res.status(403).json({ success: false, message: "Device mismatch." });
+  }
+
+  if (Date.now() - Number(record.completedAt || 0) > ATTRIBUTION_WINDOW_MS) {
+    return res.status(410).json({ success: false, message: "This support can no longer be updated." });
+  }
+
+  if (record.attributedAt) {
+    return res.status(409).json({ success: false, message: "Video attribution already submitted." });
+  }
+
+  const nextType = ATTRIBUTION_TYPES.has(attributionType) ? attributionType : "";
+  if (!nextType) {
+    return res.status(400).json({ success: false, message: "Choose a valid attribution option." });
+  }
+
+  let nextVideoId = "";
+  if (nextType === "selected_video") {
+    nextVideoId = cleanText(selectedVideoId, 120);
+    const video = getCreatorVideoBucket(creatorKey)[nextVideoId];
+
+    if (!video || video.creatorSlug !== creatorKey) {
+      return res.status(404).json({ success: false, message: "Video not found." });
+    }
+
+    if (video.platform !== record.sourcePlatform || video.isEligible === false) {
+      return res.status(400).json({ success: false, message: "Video is not eligible for this platform." });
+    }
+  }
+
+  record.attributionType = nextType;
+  record.selectedVideoId = nextVideoId;
+  record.attributedAt = Date.now();
+
+  const { stats: creatorRecord } = getCreatorStatsRecord(creatorKey, req);
+  const recentItem = creatorRecord?.recentSupports?.find(item => item.supportId === record.supportId);
+  if (recentItem) {
+    recentItem.attributionType = record.attributionType;
+    recentItem.selectedVideoId = record.selectedVideoId;
+    recentItem.attributedAt = record.attributedAt;
+  }
+
+  saveData();
+
+  res.json({ success: true, record });
 });
 
 // ---------- Creator page route ----------
@@ -1991,16 +2510,33 @@ app.get("/island/:creator", (req, res) => {
     return res.redirect(`/island/${encodeURIComponent(profile.slug)}`);
   }
 
-  sendViewerPage(res);
+  sendViewerPage(req, res, "direct");
 });
 
+
+app.get("/:creator/:sourcePlatform", (req, res, next) => {
+  const sourcePlatform = normalizeContentPlatform(req.params.sourcePlatform);
+  if (!sourcePlatform) return next();
+
+  const profile = findCreatorProfile(req.params.creator, req);
+
+  if (
+    profile?.slug &&
+    isLegacyCreatorSlug(req.params.creator) &&
+    normalizeCreatorSlug(profile.slug) !== normalizeCreatorSlug(req.params.creator)
+  ) {
+    return res.redirect(`/${encodeURIComponent(profile.slug)}/${sourcePlatform}`);
+  }
+
+  sendViewerPage(req, res, sourcePlatform);
+});
 
 app.get("/:creator", (req, res) => {
   if (isLegacyCreatorSlug(req.params.creator)) {
     return res.redirect("/dashboard");
   }
 
-  sendViewerPage(res);
+  sendViewerPage(req, res, "direct");
 });
 
 // ---------- Start server ----------

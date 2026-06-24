@@ -51,18 +51,23 @@ test("creator login entrypoint is platform neutral", () => {
   assert.doesNotMatch(terms, /sign in with YouTube/);
 });
 
-test("dashboard shows dated support activity and uploads tracked thumbnails", () => {
+test("dashboard shows dated support activity and platform video attribution controls", () => {
   assert.match(dashboard, /function formatSupportTimestamp/);
   assert.doesNotMatch(dashboard, /toLocaleTimeString/);
-  assert.match(dashboard, /id="contentThumbnailFile"/);
-  assert.match(dashboard, /type="file"/);
-  assert.match(dashboard, /Thumbnail image/);
-  assert.match(dashboard, /Upload the thumbnail supporters will see/);
-  assert.doesNotMatch(dashboard, /Thumbnail image URL/);
-  assert.match(dashboard, /\/api\/dashboard\/thumbnail/);
-  assert.match(server, /UPLOAD_DIR/);
-  assert.match(server, /app\.use\("\/uploads", express\.static\(UPLOAD_DIR/);
-  assert.match(server, /app\.post\(\s*"\/api\/dashboard\/thumbnail"/);
+  assert.match(dashboard, /Your platform links/);
+  assert.match(dashboard, /Where supporters came from/);
+  assert.match(dashboard, /Eligible videos/);
+  assert.match(dashboard, /Most-supported videos/);
+  assert.doesNotMatch(dashboard, /Create tracked content link/);
+  assert.doesNotMatch(dashboard, /contentThumbnailFile/);
+  assert.doesNotMatch(server, /\/api\/dashboard\/thumbnail/);
+  assert.match(server, /creatorVideos/);
+  assert.match(server, /supportRecords/);
+  assert.match(server, /app\.get\("\/api\/dashboard\/videos"/);
+  assert.match(server, /app\.post\(\s*"\/support\/attribute-video"/);
+  assert.match(viewer, /Which video made you want to support/);
+  assert.match(viewer, /showVideoAttributionPrompt/);
+  assert.match(viewer, /sourcePlatform/);
 });
 
 test("browser debug logs are not leaking profile or response details", () => {

@@ -1882,6 +1882,121 @@
 
   .wish-overlay.hidden { display: none; }
 
+  .attribution-card {
+    width: min(92vw, 520px);
+    max-height: 86vh;
+    overflow: auto;
+    border-radius: 26px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(9, 14, 30, 0.96);
+    box-shadow: 0 28px 90px rgba(0,0,0,0.45);
+    padding: 22px;
+  }
+
+  .attribution-card h3 {
+    margin: 0;
+    color: #f8faff;
+    font-size: 24px;
+    line-height: 1.1;
+  }
+
+  .attribution-card p {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.4;
+  }
+
+  .attribution-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .attribution-option {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    align-items: center;
+    min-height: 64px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 10px;
+    background: rgba(255,255,255,0.065);
+    color: white;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .attribution-option:hover {
+    border-color: rgba(125, 211, 252, 0.34);
+    background: rgba(125, 211, 252, 0.08);
+  }
+
+  .attribution-thumb {
+    width: 66px;
+    height: 48px;
+    border-radius: 10px;
+    object-fit: cover;
+    background: rgba(0,0,0,0.28);
+  }
+
+  .attribution-thumb-placeholder {
+    width: 66px;
+    height: 48px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: rgba(56, 189, 248, 0.13);
+    color: #bcecff;
+    font-size: 11px;
+    font-weight: 950;
+  }
+
+  .attribution-option strong,
+  .attribution-option span {
+    display: block;
+  }
+
+  .attribution-option strong {
+    font-size: 13px;
+    line-height: 1.2;
+  }
+
+  .attribution-option span {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .attribution-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .attribution-actions button {
+    min-height: 42px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.075);
+    color: white;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .attribution-note {
+    min-height: 18px;
+    margin-top: 10px;
+    color: #ffc95a;
+    font-size: 12px;
+    font-weight: 850;
+  }
+
   .wish-scene {
     position: relative;
     width: min(92vw, 900px);
@@ -2566,6 +2681,20 @@
   </div>
 </div>
 
+<div id="videoAttributionModal" class="wish-overlay hidden" aria-hidden="true">
+  <div class="attribution-card">
+    <h3>Which video made you want to support?</h3>
+    <p>This helps the creator see which posts are connecting with viewers.</p>
+    <div class="attribution-list" id="videoAttributionList"></div>
+    <div class="attribution-actions">
+      <button type="button" onclick="loadMoreAttributionVideos()">Another video</button>
+      <button type="button" onclick="submitVideoAttribution('creator_only')">Just supporting the creator</button>
+      <button type="button" onclick="submitVideoAttribution('skipped')">Skip</button>
+    </div>
+    <div class="attribution-note" id="videoAttributionNote"></div>
+  </div>
+</div>
+
   
 </aside>
 </div>
@@ -2744,6 +2873,11 @@ const rawCreator =
 const creator = decodeURIComponent(rawCreator || "Alex").trim();
     const params = new URLSearchParams(window.location.search);
     const forceSupporterView = params.get("view") === "supporter";
+    const viewerBootstrap = window.__OSCAL_VIEWER_BOOTSTRAP__ || {};
+    const allowedSourcePlatforms = new Set(["tiktok", "instagram", "youtube", "direct"]);
+    const sourcePlatform = allowedSourcePlatforms.has(viewerBootstrap.sourcePlatform)
+      ? viewerBootstrap.sourcePlatform
+      : "direct";
     const selfSupportTestMode =
       params.get("selftest") === "1" || params.get("selftest") === "true";
     const ownerSelfSupportTestMode = selfSupportTestMode || forceSupporterView;
@@ -2773,6 +2907,9 @@ let selectedSupporterPfpPreview = "";
 let stickerVideos = [];
 let stickerVideosLoaded = false;
 const stickerAssetVersion = "2026-06-24";
+let pendingAttributionSupport = null;
+let attributionVideos = [];
+let attributionVisibleCount = 5;
 const LOW_POWER_STICKER_QUERY =
   "(max-width: 760px), (pointer: coarse), (prefers-reduced-motion: reduce)";
 const SUPPORTER_STORAGE_SCOPE = String(anonId || "anonymous");
@@ -4898,6 +5035,168 @@ body: JSON.stringify({
       }
     }
 
+    function getAttributionPlatformLabel(platform) {
+      return {
+        tiktok: "TikTok",
+        instagram: "Instagram",
+        youtube: "YouTube",
+        direct: "Direct"
+      }[platform] || "Direct";
+    }
+
+    function formatAttributionDate(value) {
+      const time = Number(value || 0);
+      if (!time) return "Recent";
+
+      return new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+      }).format(new Date(time));
+    }
+
+    function clearAttributionList() {
+      const list = document.getElementById("videoAttributionList");
+      if (list) list.innerHTML = "";
+    }
+
+    function renderVideoAttributionOptions() {
+      const list = document.getElementById("videoAttributionList");
+      if (!list) return;
+
+      list.innerHTML = "";
+      const visibleVideos = attributionVideos.slice(0, attributionVisibleCount);
+
+      if (!visibleVideos.length) {
+        const empty = document.createElement("p");
+        empty.className = "lead";
+        empty.innerText = "No videos are available to select.";
+        list.appendChild(empty);
+        return;
+      }
+
+      visibleVideos.forEach(video => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "attribution-option";
+        button.addEventListener("click", () => {
+          submitVideoAttribution("selected_video", video.id);
+        });
+
+        if (video.thumbnailUrl) {
+          const img = document.createElement("img");
+          img.className = "attribution-thumb";
+          img.src = video.thumbnailUrl;
+          img.alt = "";
+          button.appendChild(img);
+        } else {
+          const placeholder = document.createElement("div");
+          placeholder.className = "attribution-thumb-placeholder";
+          placeholder.innerText = getAttributionPlatformLabel(video.platform);
+          button.appendChild(placeholder);
+        }
+
+        const copy = document.createElement("div");
+        const title = document.createElement("strong");
+        title.innerText = video.title || "Untitled video";
+        const meta = document.createElement("span");
+        meta.innerText = `${getAttributionPlatformLabel(video.platform)} • ${formatAttributionDate(video.publishedAt || video.createdAt)}`;
+        copy.append(title, meta);
+        button.appendChild(copy);
+        list.appendChild(button);
+      });
+    }
+
+    async function showVideoAttributionPrompt(completeData) {
+      if (!completeData?.supportId) return;
+
+      pendingAttributionSupport = {
+        supportId: completeData.supportId,
+        sourcePlatform: completeData.sourcePlatform || sourcePlatform
+      };
+      attributionVideos = [];
+      attributionVisibleCount = 5;
+
+      const modal = document.getElementById("videoAttributionModal");
+      const note = document.getElementById("videoAttributionNote");
+      if (note) note.innerText = "";
+      clearAttributionList();
+
+      try {
+        const res = await fetch(
+          `/support/eligible-videos?creator=${encodeURIComponent(creator)}&platform=${encodeURIComponent(pendingAttributionSupport.sourcePlatform)}`
+        );
+        const data = await res.json();
+        attributionVideos = Array.isArray(data.videos) ? data.videos : [];
+      } catch (err) {
+        attributionVideos = [];
+      }
+
+      renderVideoAttributionOptions();
+
+      if (modal) {
+        modal.classList.remove("hidden");
+        modal.setAttribute("aria-hidden", "false");
+      }
+    }
+
+    function hideVideoAttributionPrompt() {
+      const modal = document.getElementById("videoAttributionModal");
+      if (modal) {
+        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
+      }
+      pendingAttributionSupport = null;
+    }
+
+    function loadMoreAttributionVideos() {
+      if (attributionVisibleCount >= attributionVideos.length) {
+        const note = document.getElementById("videoAttributionNote");
+        if (note) note.innerText = "No more videos are available for this platform.";
+        return;
+      }
+
+      attributionVisibleCount += 5;
+      renderVideoAttributionOptions();
+    }
+
+    async function submitVideoAttribution(attributionType, selectedVideoId = "") {
+      if (!pendingAttributionSupport) {
+        hideVideoAttributionPrompt();
+        return;
+      }
+
+      const note = document.getElementById("videoAttributionNote");
+      if (note) note.innerText = "Saving...";
+
+      try {
+        const res = await fetch("/support/attribute-video", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            creator,
+            supportId: pendingAttributionSupport.supportId,
+            anonId,
+            fingerprint,
+            attributionType,
+            selectedVideoId
+          })
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          throw new Error(data.message || "Could not save selection.");
+        }
+
+        hideVideoAttributionPrompt();
+      } catch (err) {
+        if (note) note.innerText = err.message || "Could not save selection.";
+      }
+    }
+
     function finishSuccessfulSupport(completeData) {
       cooldownUntil = Date.now() + 30000;
 
@@ -4931,6 +5230,7 @@ body: JSON.stringify({
       );
 
       showReactionPicker(supporterCreatorSupports);
+      showVideoAttributionPrompt(completeData);
 
       checkSupportStatus();
       triggerWellGlow(4500);
@@ -5248,6 +5548,7 @@ body: JSON.stringify({
         deviceFamily,
         supporterView: forceSupporterView,
         selfSupportTest: selfSupportTestMode,
+        sourcePlatform,
         videoId,
         videoTitle,
         videoThumbnail,
@@ -5511,6 +5812,7 @@ body: JSON.stringify({
         deviceFamily,
         supporterView: forceSupporterView,
         selfSupportTest: selfSupportTestMode,
+        sourcePlatform,
 
         supporterName:
           serverHasSupporterProfile ? supporterProfile?.name || "" : "",

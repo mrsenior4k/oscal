@@ -150,6 +150,10 @@
       gap: 16px;
     }
 
+    .dashboard-row {
+      margin-top: 16px;
+    }
+
     .link-box {
       margin-top: 14px;
       padding: 14px;
@@ -192,23 +196,116 @@
       line-height: 1.35;
     }
 
-    .thumbnail-preview {
-      width: 100%;
-      max-height: 190px;
-      display: none;
-      margin-top: 10px;
-      border-radius: 16px;
-      border: 1px solid rgba(255,255,255,0.1);
-      object-fit: cover;
-      background: rgba(0,0,0,0.22);
-    }
-
     .form-error {
       min-height: 18px;
       margin-top: 10px;
       color: #ff9aa8;
       font-size: 13px;
       font-weight: 800;
+    }
+
+    .platform-stats,
+    .platform-links,
+    .video-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .platform-stat,
+    .platform-link,
+    .video-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.055);
+    }
+
+    .platform-stat strong,
+    .platform-link strong,
+    .video-item strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .platform-link code,
+    .video-item span,
+    .platform-stat span {
+      display: block;
+      margin-top: 4px;
+      color: #aeb8d6;
+      font-size: 12px;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .mini-btn {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.16);
+      color: #dbeafe;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .mini-btn.danger {
+      background: rgba(255, 109, 122, 0.14);
+      color: #ffd3d8;
+    }
+
+    .video-item {
+      grid-template-columns: auto 1fr auto;
+    }
+
+    .video-thumb {
+      width: 56px;
+      height: 42px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: rgba(0,0,0,0.25);
+    }
+
+    .video-thumb-placeholder {
+      width: 56px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      background: rgba(56, 189, 248, 0.12);
+      color: #bcecff;
+      font-size: 11px;
+      font-weight: 950;
+    }
+
+    .video-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .platform-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 20px;
+      margin-left: 6px;
+      padding: 0 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(96, 200, 255, 0.32);
+      color: #bcecff;
+      background: rgba(56, 189, 248, 0.12);
+      font-size: 10px;
+      font-weight: 950;
+      line-height: 1;
+      white-space: nowrap;
     }
 
     .feed {
@@ -339,6 +436,12 @@
       .grid, .main { grid-template-columns: 1fr; }
       .top { flex-direction: column; align-items: flex-start; }
       .actions { width: 100%; justify-content: flex-start; }
+      .platform-link, .platform-stat { grid-template-columns: 1fr; }
+      .video-item { grid-template-columns: auto 1fr; }
+      .video-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+      }
     }
   </style>
 </head>
@@ -380,10 +483,10 @@
       </div>
 
       <div class="card">
-  <div class="label">Top supported content</div>
+  <div class="label">Where supporters came from</div>
 
-  <div id="topVideosList" style="margin-top:16px; display:grid; gap:12px;">
-    <p class="empty">No supported content yet.</p>
+  <div class="platform-stats" id="platformStats">
+    <p class="empty">No completed supports yet.</p>
   </div>
 </div>
 
@@ -400,44 +503,45 @@
       </div>
 
       <div class="card">
-  <div class="label">Create tracked content link</div>
+        <div class="label">Your platform links</div>
+        <p class="sub">Place each link in the matching platform’s bio. Oscal will automatically record which platform a supporter came from.</p>
 
-  <input
-    id="contentTitle"
-    placeholder="Video title"
-    class="form-control"
-  >
+        <div class="platform-links" id="platformLinks">
+          <p class="empty">Loading platform links...</p>
+        </div>
+      </div>
+    </section>
 
-  <label class="field-label" for="contentThumbnailFile">Thumbnail image</label>
-  <p class="field-hint" id="thumbnailUploadHint">
-    Upload the thumbnail supporters will see on this tracked content link.
-  </p>
-  <input
-    id="contentThumbnailFile"
-    class="form-control"
-    type="file"
-    accept="image/jpeg,image/png,image/webp"
-    aria-describedby="thumbnailUploadHint"
-  >
+    <section class="main dashboard-row">
+      <div class="card">
+        <div class="label">Eligible videos</div>
+        <p class="sub">Add TikTok or Instagram posts supporters can choose after they support. YouTube videos are imported when possible after YouTube login.</p>
 
-  <img id="contentThumbnailPreview" class="thumbnail-preview" alt="">
+        <select id="eligiblePlatform" class="form-control">
+          <option value="tiktok">TikTok</option>
+          <option value="instagram">Instagram</option>
+        </select>
 
-  <select
-    id="contentPlatform"
-    class="form-control"
-  >
-    <option value="tiktok">TikTok</option>
-    <option value="youtube">YouTube</option>
-    <option value="instagram">Instagram</option>
-  </select>
+        <input id="eligibleUrl" class="form-control" placeholder="Public video or post URL">
+        <input id="eligibleTitle" class="form-control" placeholder="Title or short label">
+        <input id="eligibleThumbnail" class="form-control" placeholder="Optional thumbnail image URL">
 
-  <button class="btn" id="generateTrackedLinkBtn" style="margin-top:12px;" onclick="createTrackedLink()">
-    Generate link
-  </button>
+        <button class="btn" id="addEligibleVideoBtn" style="margin-top:12px;" onclick="addEligibleVideo()">
+          Add video
+        </button>
 
-  <div class="form-error" id="trackedContentError"></div>
-  <div class="link-box" id="trackedLink" style="display:none;"></div>
-</div>
+        <div class="form-error" id="eligibleVideoError"></div>
+        <div class="video-list" id="eligibleVideosList">
+          <p class="empty">No eligible videos yet.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="label">Most-supported videos</div>
+        <div class="video-list" id="mostSupportedVideosList">
+          <p class="empty">No video attribution yet.</p>
+        </div>
+      </div>
     </section>
 
     <nav class="legal-links" aria-label="Legal links">
@@ -449,7 +553,14 @@
   <script>
     let publicLink = "";
 let currentProfile = null;
-let thumbnailPreviewUrl = "";
+let creatorVideosCache = [];
+
+const PLATFORM_LABELS = {
+  tiktok: "TikTok",
+  instagram: "Instagram",
+  youtube: "YouTube",
+  direct: "Direct"
+};
 
 function getDashboardDeviceFamily() {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -484,9 +595,7 @@ function renderDashboardBadge(badge) {
 }
 
 function getVisibleDashboardBadges(badges = [], equippedBadge = null) {
-  if (equippedBadge?.id) {
-    return [equippedBadge];
-  }
+  if (equippedBadge?.id) return [equippedBadge];
 
   return (Array.isArray(badges) ? badges : [])
     .filter(badge => badge?.id && badge.unlocked !== false)
@@ -504,17 +613,18 @@ function renderDashboardBadges(badges = [], equippedBadge = null) {
   `;
 }
 
-function setTrackedContentError(message = "") {
-  const errorEl = document.getElementById("trackedContentError");
+function renderPlatformPill(platform) {
+  return `<span class="platform-pill">${escapeHtml(PLATFORM_LABELS[platform] || "Direct")}</span>`;
+}
+
+function setEligibleVideoError(message = "") {
+  const errorEl = document.getElementById("eligibleVideoError");
   if (errorEl) errorEl.innerText = message;
 }
 
 function formatSupportTimestamp(value) {
   const date = new Date(Number(value || 0));
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
+  if (Number.isNaN(date.getTime())) return "";
 
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
@@ -525,101 +635,21 @@ function formatSupportTimestamp(value) {
   }).format(date);
 }
 
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Could not read thumbnail image."));
-    reader.readAsDataURL(file);
-  });
+function formatVideoDate(value) {
+  const time = Number(value || 0);
+  if (!time) return "No date";
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  }).format(new Date(time));
 }
 
-function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not load thumbnail image."));
-    image.src = src;
-  });
-}
-
-async function prepareThumbnailUpload(file) {
-  if (!file) return "";
-
-  const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-  if (!allowedTypes.has(file.type)) {
-    throw new Error("Upload a JPG, PNG, or WebP thumbnail.");
-  }
-
-  if (file.size > 8 * 1024 * 1024) {
-    throw new Error("Choose an image under 8 MB.");
-  }
-
-  const rawDataUrl = await readFileAsDataUrl(file);
-  const image = await loadImage(rawDataUrl);
-  const maxSide = 960;
-  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
-  const width = Math.max(1, Math.round(image.naturalWidth * scale));
-  const height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-
-  canvas.width = width;
-  canvas.height = height;
-  ctx.fillStyle = "#0d1327";
-  ctx.fillRect(0, 0, width, height);
-  ctx.drawImage(image, 0, 0, width, height);
-
-  return canvas.toDataURL("image/jpeg", 0.78);
-}
-
-async function uploadTrackedThumbnail(file) {
-  if (!file) return "";
-
-  const imageData = await prepareThumbnailUpload(file);
-  const res = await fetch("/api/dashboard/thumbnail", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageData })
-  });
-  const data = await res.json();
-
-  if (!data.success) {
-    throw new Error(data.message || "Could not upload thumbnail.");
-  }
-
-  return data.url || "";
-}
-
-function previewTrackedThumbnail() {
-  const input = document.getElementById("contentThumbnailFile");
-  const preview = document.getElementById("contentThumbnailPreview");
-  const file = input?.files?.[0];
-
-  setTrackedContentError("");
-
-  if (thumbnailPreviewUrl) {
-    URL.revokeObjectURL(thumbnailPreviewUrl);
-    thumbnailPreviewUrl = "";
-  }
-
-  if (!file) {
-    preview.style.display = "none";
-    preview.removeAttribute("src");
-    return;
-  }
-
-  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-    input.value = "";
-    preview.style.display = "none";
-    preview.removeAttribute("src");
-    setTrackedContentError("Upload a JPG, PNG, or WebP thumbnail.");
-    return;
-  }
-
-  thumbnailPreviewUrl = URL.createObjectURL(file);
-  preview.src = thumbnailPreviewUrl;
-  preview.style.display = "block";
+function getPublicCreatorSlug() {
+  return String(currentProfile?.slug || "")
+    .replace(/^@+/, "")
+    .trim();
 }
 
 function getSupportIslandLink() {
@@ -636,19 +666,143 @@ function getSupportIslandLink() {
   );
 }
 
-function openSupportIsland() {
-  const link = getSupportIslandLink();
-  if (!link) return;
+function getPlatformLink(platform) {
+  const slug = getPublicCreatorSlug();
+  if (!slug) return "";
 
-  window.open(link, "_blank");
+  return `${window.location.origin}/${encodeURIComponent(slug)}/${platform}`;
 }
 
-function copySupportIslandLink() {
-  const link = getSupportIslandLink();
+function copyText(text, button, fallbackText = "Copy") {
+  navigator.clipboard.writeText(text).catch(() => {});
+  if (!button) return;
+
+  button.innerText = "Copied";
+  setTimeout(() => {
+    button.innerText = fallbackText;
+  }, 1200);
+}
+
+function renderPlatformLinks() {
+  const list = document.getElementById("platformLinks");
+  const platforms = ["tiktok", "instagram", "youtube"];
+
+  list.innerHTML = platforms.map(platform => {
+    const link = getPlatformLink(platform);
+
+    return `
+      <div class="platform-link">
+        <div>
+          <strong>${PLATFORM_LABELS[platform]}</strong>
+          <code>${escapeHtml(link)}</code>
+        </div>
+        <button class="mini-btn" type="button" onclick="copyPlatformLink('${platform}', this)">Copy</button>
+      </div>
+    `;
+  }).join("");
+}
+
+function copyPlatformLink(platform, button) {
+  const link = getPlatformLink(platform);
   if (!link) return;
 
-  navigator.clipboard.writeText(link);
-  alert("Island link copied.");
+  copyText(link, button, "Copy");
+}
+
+function renderPlatformStats(counts = {}) {
+  const list = document.getElementById("platformStats");
+  const platforms = ["tiktok", "instagram", "youtube", "direct"];
+
+  list.innerHTML = platforms.map(platform => `
+    <div class="platform-stat">
+      <div>
+        <strong>${PLATFORM_LABELS[platform]}</strong>
+        <span>Completed supports</span>
+      </div>
+      <strong>${Number(counts[platform] || 0)}</strong>
+    </div>
+  `).join("");
+}
+
+function renderVideoThumb(video) {
+  if (video.thumbnailUrl) {
+    return `<img class="video-thumb" src="${escapeHtml(video.thumbnailUrl)}" alt="">`;
+  }
+
+  return `<div class="video-thumb-placeholder">${escapeHtml(PLATFORM_LABELS[video.platform] || "Post")}</div>`;
+}
+
+function renderEligibleVideos(videos = []) {
+  creatorVideosCache = Array.isArray(videos) ? videos : [];
+  const list = document.getElementById("eligibleVideosList");
+
+  if (!creatorVideosCache.length) {
+    list.innerHTML = `<p class="empty">No eligible videos yet.</p>`;
+    return;
+  }
+
+  list.innerHTML = creatorVideosCache.map(video => `
+    <div class="video-item">
+      ${renderVideoThumb(video)}
+      <div>
+        <strong>${escapeHtml(video.title || "Untitled video")}</strong>
+        <span>${escapeHtml(PLATFORM_LABELS[video.platform] || video.platform)} • ${video.isEligible === false ? "Ineligible" : "Eligible"} • ${formatVideoDate(video.publishedAt || video.createdAt)}</span>
+        ${video.contentUrl ? `<span>${escapeHtml(video.contentUrl)}</span>` : ""}
+      </div>
+      <div class="video-actions">
+        <button class="mini-btn" type="button" onclick="toggleVideoEligibility('${escapeHtml(video.id)}', ${video.isEligible === false})">
+          ${video.isEligible === false ? "Make eligible" : "Pause"}
+        </button>
+        <button class="mini-btn danger" type="button" onclick="deleteEligibleVideo('${escapeHtml(video.id)}')">Delete</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderMostSupportedVideos(videos = [], summary = {}) {
+  const list = document.getElementById("mostSupportedVideosList");
+  const rows = [];
+
+  (Array.isArray(videos) ? videos : []).forEach(video => {
+    rows.push(`
+      <div class="video-item">
+        ${renderVideoThumb(video)}
+        <div>
+          <strong>${escapeHtml(video.title || "Untitled video")}</strong>
+          <span>${escapeHtml(PLATFORM_LABELS[video.platform] || video.platform)} • ${Number(video.attributedSupports || 0)} attributed supports</span>
+        </div>
+        <strong>${Number(video.attributedSupports || 0)}</strong>
+      </div>
+    `);
+  });
+
+  rows.push(`
+    <div class="platform-stat">
+      <div>
+        <strong>Just supporting the creator</strong>
+        <span>Viewer explicitly chose creator-only</span>
+      </div>
+      <strong>${Number(summary.creatorOnly || 0)}</strong>
+    </div>
+  `);
+
+  rows.push(`
+    <div class="platform-stat">
+      <div>
+        <strong>No video selected</strong>
+        <span>Skipped, closed, or did not answer</span>
+      </div>
+      <strong>${Number(summary.noVideoSelected || 0)}</strong>
+    </div>
+  `);
+
+  list.innerHTML = rows.join("");
+}
+
+async function refreshEligibleVideos() {
+  const res = await fetch("/api/dashboard/videos");
+  const data = await res.json();
+  renderEligibleVideos(data.videos || []);
 }
 
     async function loadDashboard() {
@@ -665,12 +819,11 @@ function copySupportIslandLink() {
   }
 
   document.getElementById("creatorName").innerText = profile.displayName;
- const img = document.getElementById("creatorImage");
-
-img.src = profile.profileImage || "";
+  document.getElementById("creatorImage").src = profile.profileImage || "";
 
   publicLink = getSupportIslandLink();
   document.getElementById("supportIslandLink").href = publicLink;
+  renderPlatformLinks();
 
   const statsRes = await fetch("/api/dashboard/stats");
   const countData = await statsRes.json();
@@ -680,31 +833,21 @@ img.src = profile.profileImage || "";
 
   document.getElementById("totalSupports").innerText = supports;
   document.getElementById("estimatedEarned").innerText = "$" + earnings.toFixed(2);
-
-  if (countData.topVideos && countData.topVideos.length > 0) {
-    const list = document.getElementById("topVideosList");
-
-    list.innerHTML = countData.topVideos.map((video, index) => `
-      <div class="feed-item">
-        <div class="feed-left">
-          <strong>#${index + 1} ${video.videoTitle || "Untitled content"}</strong>
-          <span>${(video.platform || "unknown").toUpperCase()} • ${video.supports} supports</span>
-        </div>
-
-        <div style="font-size:28px;">
-          ${index === 0 ? "🥇" : index === 1 ? "🥈" : "🥉"}
-        </div>
-      </div>
-    `).join("");
-  }
+  renderPlatformStats(countData.platformCounts || {});
+  renderMostSupportedVideos(countData.mostSupportedVideos || [], countData.attributionSummary || {});
+  renderEligibleVideos(countData.creatorVideos || []);
 
   if (countData.recentSupports && countData.recentSupports.length > 0) {
     document.getElementById("recentFeed").innerHTML =
-      countData.recentSupports.map(item => `
+      countData.recentSupports.map(item => {
+        const platform = item.sourcePlatform || "direct";
+
+        return `
         <div class="feed-item">
           <div class="feed-left">
             <div class="feed-name-line">
               <strong>${escapeHtml(item.name)}</strong>
+              ${renderPlatformPill(platform)}
               ${renderDashboardBadges(item.badges, item.equippedBadge)}
             </div>
             <span>${escapeHtml(item.emoji ? item.emoji : "Support echoed into the well")}</span>
@@ -712,76 +855,82 @@ img.src = profile.profileImage || "";
 
           <div class="feed-time">${formatSupportTimestamp(item.time)}</div>
         </div>
-      `).join("");
+      `;
+      }).join("");
   }
 }
-   
 
     function copyPublicLink() {
-      navigator.clipboard.writeText(publicLink);
-      const button = document.getElementById("copyIslandLinkBtn");
-      if (!button) return;
-
-      button.innerText = "Copied";
-      setTimeout(() => {
-        button.innerText = "Copy island link";
-      }, 1200);
+      copyText(publicLink, document.getElementById("copyIslandLinkBtn"), "Copy island link");
     }
-    async function createTrackedLink() {
-  const title = document.getElementById("contentTitle").value.trim();
-  const platform = document.getElementById("contentPlatform").value;
-  const thumbnailFile = document.getElementById("contentThumbnailFile").files[0];
-  const button = document.getElementById("generateTrackedLinkBtn");
 
-  setTrackedContentError("");
+async function addEligibleVideo() {
+  const button = document.getElementById("addEligibleVideoBtn");
+  const payload = {
+    platform: document.getElementById("eligiblePlatform").value,
+    contentUrl: document.getElementById("eligibleUrl").value.trim(),
+    title: document.getElementById("eligibleTitle").value.trim(),
+    thumbnailUrl: document.getElementById("eligibleThumbnail").value.trim()
+  };
 
-  if (!title) {
-    setTrackedContentError("Add a video title first.");
-    return;
-  }
-
-  let thumbnail = "";
+  setEligibleVideoError("");
 
   try {
     button.disabled = true;
-    button.innerText = "Generating...";
-    thumbnail = await uploadTrackedThumbnail(thumbnailFile);
+    button.innerText = "Adding...";
+
+    const res = await fetch("/api/dashboard/videos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      throw new Error(data.message || "Could not add video.");
+    }
+
+    document.getElementById("eligibleUrl").value = "";
+    document.getElementById("eligibleTitle").value = "";
+    document.getElementById("eligibleThumbnail").value = "";
+    await refreshEligibleVideos();
   } catch (err) {
-    setTrackedContentError(err.message || "Could not upload thumbnail.");
-    return;
+    setEligibleVideoError(err.message || "Could not add video.");
   } finally {
     button.disabled = false;
-    button.innerText = "Generate link";
+    button.innerText = "Add video";
   }
-
-  const videoId =
-    platform + "-" + Date.now();
-
-  const linkUrl = new URL(
-    "/island/" + encodeURIComponent(currentProfile.slug),
-    window.location.origin
-  );
-  linkUrl.searchParams.set("video", videoId);
-  linkUrl.searchParams.set("view", "supporter");
-  linkUrl.searchParams.set("title", title);
-  linkUrl.searchParams.set("platform", platform);
-
-  if (thumbnail) {
-    linkUrl.searchParams.set("thumbnail", thumbnail);
-  }
-
-  const link = linkUrl.toString();
-
-  const box = document.getElementById("trackedLink");
-  box.innerText = link;
-  box.style.display = "block";
-
-  navigator.clipboard.writeText(link).catch(() => {});
 }
 
-    document
-      .getElementById("contentThumbnailFile")
-      .addEventListener("change", previewTrackedThumbnail);
+async function toggleVideoEligibility(videoId, makeEligible) {
+  const res = await fetch(`/api/dashboard/videos/${encodeURIComponent(videoId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isEligible: makeEligible })
+  });
+  const data = await res.json();
+
+  if (!data.success) {
+    setEligibleVideoError(data.message || "Could not update video.");
+    return;
+  }
+
+  await refreshEligibleVideos();
+}
+
+async function deleteEligibleVideo(videoId) {
+  const res = await fetch(`/api/dashboard/videos/${encodeURIComponent(videoId)}`, {
+    method: "DELETE"
+  });
+  const data = await res.json();
+
+  if (!data.success) {
+    setEligibleVideoError(data.message || "Could not delete video.");
+    return;
+  }
+
+  await refreshEligibleVideos();
+}
 
     loadDashboard();
   </script>
