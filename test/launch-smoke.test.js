@@ -69,6 +69,11 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.doesNotMatch(dashboard, /function formatSupportTimestamp/);
   assert.match(dashboard, /Your platform links/);
   assert.match(dashboard, /Where supporters came from/);
+  assert.match(dashboard, /Support goal/);
+  assert.match(dashboard, /Save goal/);
+  assert.match(dashboard, /function saveSupportGoal/);
+  assert.match(dashboard, /\/api\/dashboard\/goal/);
+  assert.doesNotMatch(dashboard, /Estimated earned/);
   assert.match(dashboard, /Campaign videos/);
   assert.match(dashboard, /Add videos supporters can choose from when they support/);
   assert.match(dashboard, /Campaign breakdown/);
@@ -98,6 +103,8 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.doesNotMatch(dashboard, /function archiveCampaign/);
   assert.doesNotMatch(server, /\/api\/dashboard\/thumbnail/);
   assert.match(server, /app\.get\("\/api\/dashboard\/campaigns"/);
+  assert.match(server, /\/api\/dashboard\/goal/);
+  assert.match(server, /function normalizeSupportGoal/);
   assert.match(server, /\/api\/dashboard\/campaigns\/metadata/);
   assert.match(server, /\/api\/dashboard\/campaigns\/:campaignId\/activate/);
   assert.match(server, /\/api\/dashboard\/campaigns\/:campaignId\/deactivate/);
@@ -108,6 +115,10 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(server, /function saveThumbnailUpload/);
   assert.match(viewer, /activeCampaign/);
   assert.match(viewer, /campaignRemainingSupports/);
+  assert.match(viewer, /goalProgressFill/);
+  assert.match(viewer, /function updateGoalProgress/);
+  assert.match(viewer, /supportGoal = normalizeSupportGoal\(data\.supportGoal/);
+  assert.doesNotMatch(viewer, /Estimated earned/);
   assert.match(viewer, /Which video made you want to support/);
   assert.doesNotMatch(viewer, /This helps the creator see which posts are connecting with viewers/);
   assert.doesNotMatch(viewer, /contentPlatformText/);

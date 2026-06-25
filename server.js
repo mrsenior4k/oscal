@@ -263,6 +263,7 @@ function mergeCreatorStatRecords(target = {}, source = {}) {
   const merged = {
     supports: Number(target.supports || 0) + Number(source.supports || 0),
     earnings: Number(target.earnings || 0) + Number(source.earnings || 0),
+    supportGoal: normalizeSupportGoal(target.supportGoal || source.supportGoal),
     videos: { ...(target.videos || {}) },
     recentSupports: [
       ...(Array.isArray(target.recentSupports) ? target.recentSupports : []),
@@ -310,6 +311,43 @@ function mergeCreatorStatRecords(target = {}, source = {}) {
     .slice(0, 100);
 
   return merged;
+}
+
+function normalizeSupportGoal(goal = {}) {
+  const title = cleanText(goal.title, 80) || "Support goal";
+  const amount = Number(goal.amount || 0);
+  const safeAmount = Number.isFinite(amount)
+    ? Math.min(999999, Math.max(0, amount))
+    : 0;
+
+  return {
+    title,
+    amount: Number(safeAmount.toFixed(2))
+  };
+}
+
+function getDefaultCreatorStats() {
+  return {
+    supports: 0,
+    earnings: 0,
+    videos: {},
+    recentSupports: [],
+    supporterFirstSeen: {},
+    supporterOrder: [],
+    supportGoal: normalizeSupportGoal()
+  };
+}
+
+function getOrCreateCreatorStats(creatorKey) {
+  if (!creatorStats[creatorKey]) {
+    creatorStats[creatorKey] = getDefaultCreatorStats();
+  } else {
+    creatorStats[creatorKey].supportGoal = normalizeSupportGoal(
+      creatorStats[creatorKey].supportGoal
+    );
+  }
+
+  return creatorStats[creatorKey];
 }
 
 app.get("/", (req, res) => {
@@ -2861,16 +2899,7 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
     userData.supportAttemptId = "";
     userData.adCampaignId = "";
 
-    if (!creatorStats[creatorKey]) {
-      creatorStats[creatorKey] = {
-        supports: 0,
-        earnings: 0,
-        videos: {},
-        recentSupports: [],
-        supporterFirstSeen: {},
-        supporterOrder: []
-      };
-    }
+    getOrCreateCreatorStats(creatorKey);
 
     creatorStats[creatorKey].supports++;
     creatorStats[creatorKey].earnings += REWARD_PER_SUPPORT;
@@ -2952,6 +2981,8 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
     return res.json({
       success: true,
       supports: creatorStats[creatorKey].supports,
+      earnings: Number(creatorStats[creatorKey].earnings.toFixed(2)),
+      supportGoal: normalizeSupportGoal(creatorStats[creatorKey].supportGoal),
       creatorSupports: creatorSupportsForViewer,
       supportId,
       campaignId: campaign.id,
@@ -2989,12 +3020,7 @@ app.get("/support-island", requireCreatorLogin, (req, res) => {
 app.get('/count/:creator', enforceRateLimit("count", 60_000, 120), (req, res) => {
   const creator = req.params.creator;
   const { key: creatorKey, stats } = getCreatorStatsRecord(creator, req);
-  const creatorRecord = stats || {
-    supports: 0,
-    earnings: 0,
-    videos: {},
-    recentSupports: []
-  };
+  const creatorRecord = stats || getDefaultCreatorStats();
 
   debugLog("COUNT REQUEST:", {
   creator,
@@ -3015,9 +3041,13 @@ app.get('/count/:creator', enforceRateLimit("count", 60_000, 120), (req, res) =>
     return totals;
   }, { supports: 0, earnings: 0 });
 
+  const supports = Math.max(Number(creatorRecord.supports || 0), campaignTotals.supports);
+  const earnings = Number(Math.max(Number(creatorRecord.earnings || 0), campaignTotals.earnings).toFixed(2));
+
   res.json({
-    supports: Math.max(Number(creatorRecord.supports || 0), campaignTotals.supports),
-    earnings: Number(Math.max(Number(creatorRecord.earnings || 0), campaignTotals.earnings).toFixed(2)),
+    supports,
+    earnings,
+    supportGoal: normalizeSupportGoal(creatorRecord.supportGoal),
     activeCampaign,
     campaigns,
     recentSupports: (creatorRecord.recentSupports || [])
@@ -3240,12 +3270,7 @@ app.get("/api/creator/:slug", enforceRateLimit("creator-profile", 60_000, 120), 
 app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
   const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
   const { stats } = getCreatorStatsRecord(creator, req);
-  const creatorRecord = stats || {
-    supports: 0,
-    earnings: 0,
-    videos: {},
-    recentSupports: []
-  };
+  const creatorRecord = stats || getDefaultCreatorStats();
   const videos = Object.values(creatorRecord.videos || {});
   const topVideos = videos
     .sort((a, b) => b.supports - a.supports)
@@ -3263,10 +3288,14 @@ app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
     .filter(campaign => campaign.status !== "archived" || Number(campaign.totalSupports || 0) > 0)
     .sort((a, b) => Number(b.totalSupports || 0) - Number(a.totalSupports || 0));
 
+  const supports = Math.max(Number(creatorRecord.supports || 0), campaignTotals.supports);
+  const earnings = Number(Math.max(Number(creatorRecord.earnings || 0), campaignTotals.earnings).toFixed(2));
+
   res.json({
     creator,
-    supports: Math.max(Number(creatorRecord.supports || 0), campaignTotals.supports),
-    earnings: Number(Math.max(Number(creatorRecord.earnings || 0), campaignTotals.earnings).toFixed(2)),
+    supports,
+    earnings,
+    supportGoal: normalizeSupportGoal(creatorRecord.supportGoal),
     activeCampaign,
     campaigns,
     campaignTotals: {
@@ -3287,6 +3316,27 @@ app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
     }
   });
 });
+
+app.post(
+  "/api/dashboard/goal",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-goal", 60_000, 30),
+  (req, res) => {
+    const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+    const creatorRecord = getOrCreateCreatorStats(creator);
+
+    creatorRecord.supportGoal = normalizeSupportGoal({
+      title: req.body.title,
+      amount: req.body.amount
+    });
+    saveData();
+
+    res.json({
+      success: true,
+      supportGoal: creatorRecord.supportGoal
+    });
+  }
+);
 
 app.get("/api/dashboard/campaigns", requireCreatorLogin, (req, res) => {
   const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);

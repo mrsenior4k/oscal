@@ -130,6 +130,57 @@
       margin-top: 12px;
     }
 
+    .goal-name {
+      margin-top: 12px;
+      font-size: 20px;
+      font-weight: 950;
+      line-height: 1.2;
+    }
+
+    .goal-progress {
+      width: 100%;
+      height: 12px;
+      margin-top: 14px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.09);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .goal-progress-fill {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #38bdf8, #34d399);
+      transition: width 0.35s ease;
+    }
+
+    .goal-progress-text {
+      margin-top: 10px;
+      color: #dbeafe;
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .goal-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 120px;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .goal-form .form-control {
+      margin-top: 0;
+    }
+
+    .goal-form .btn {
+      grid-column: 1 / -1;
+      justify-self: start;
+      min-height: 40px;
+      padding: 10px 14px;
+      border-radius: 14px;
+    }
+
     .small-value {
       margin-top: 14px;
       font-size: 18px;
@@ -387,6 +438,7 @@
       .grid, .main { grid-template-columns: 1fr; }
       .top { flex-direction: column; align-items: flex-start; }
       .actions { width: 100%; justify-content: flex-start; }
+      .goal-form { grid-template-columns: 1fr; }
       .platform-link, .platform-stat { grid-template-columns: 1fr; }
       .video-item { grid-template-columns: auto 1fr; }
       .video-actions {
@@ -429,8 +481,19 @@
       </div>
 
       <div class="card">
-        <div class="label">Estimated earned</div>
-        <div class="value" id="estimatedEarned">$0.00</div>
+        <div class="label">Support goal</div>
+        <div class="goal-name" id="dashboardGoalName">Support goal</div>
+        <div class="goal-progress" aria-hidden="true">
+          <div class="goal-progress-fill" id="dashboardGoalProgress"></div>
+        </div>
+        <div class="goal-progress-text" id="dashboardGoalText">$0.00 raised</div>
+
+        <div class="goal-form">
+          <input id="goalTitleInput" class="form-control" placeholder="Goal name">
+          <input id="goalAmountInput" class="form-control" type="number" min="0" step="0.01" placeholder="Amount">
+          <button class="btn" id="saveGoalBtn" type="button" onclick="saveSupportGoal()">Save goal</button>
+        </div>
+        <div class="form-status" id="goalStatus"></div>
       </div>
 
       <div class="card">
@@ -500,6 +563,7 @@
 let publicLink = "";
 let currentProfile = null;
 let campaignsCache = [];
+let currentDashboardEarnings = 0;
 let campaignLookupTimer = null;
 let campaignLookupNonce = 0;
 let selectedCampaignThumbnailImageData = "";
@@ -616,6 +680,38 @@ function renderCampaignThumb(campaign) {
 
 function formatMoney(value) {
   return `$${Number(value || 0).toFixed(2)}`;
+}
+
+function normalizeSupportGoal(goal = {}) {
+  const amount = Number(goal.amount || 0);
+  return {
+    title: String(goal.title || "Support goal").trim() || "Support goal",
+    amount: Number.isFinite(amount) ? Math.max(0, amount) : 0
+  };
+}
+
+function renderDashboardGoal(goal = {}, earnings = currentDashboardEarnings) {
+  const supportGoal = normalizeSupportGoal(goal);
+  const amount = Number(supportGoal.amount || 0);
+  const percent = amount > 0
+    ? Math.min(100, Math.max(0, (Number(earnings || 0) / amount) * 100))
+    : 0;
+
+  document.getElementById("dashboardGoalName").innerText = supportGoal.title;
+  document.getElementById("dashboardGoalProgress").style.width = `${percent}%`;
+  document.getElementById("dashboardGoalText").innerText = amount > 0
+    ? `${formatMoney(earnings)} raised of ${formatMoney(amount)}`
+    : `${formatMoney(earnings)} raised`;
+  document.getElementById("goalTitleInput").value = supportGoal.title;
+  document.getElementById("goalAmountInput").value = amount > 0 ? amount.toFixed(2) : "";
+}
+
+function setGoalStatus(message = "", tone = "") {
+  const status = document.getElementById("goalStatus");
+  if (!status) return;
+
+  status.textContent = message;
+  status.className = `form-status${tone ? ` ${tone}` : ""}`;
 }
 
 function formatCampaignDate(value) {
@@ -932,9 +1028,10 @@ async function refreshCampaigns() {
 
   const supports = Number(countData.supports || 0);
   const earnings = Number(countData.earnings || 0);
+  currentDashboardEarnings = earnings;
 
   document.getElementById("totalSupports").innerText = supports;
-  document.getElementById("estimatedEarned").innerText = "$" + earnings.toFixed(2);
+  renderDashboardGoal(countData.supportGoal, earnings);
   renderPlatformStats(countData.platformCounts || {});
   renderCampaigns(countData.campaigns || []);
 }
@@ -982,6 +1079,38 @@ async function createCampaign() {
   }
 }
 
+async function saveSupportGoal() {
+  const button = document.getElementById("saveGoalBtn");
+  const title = document.getElementById("goalTitleInput").value;
+  const amount = document.getElementById("goalAmountInput").value;
+
+  setGoalStatus("");
+
+  try {
+    button.disabled = true;
+    button.innerText = "Saving...";
+
+    const res = await fetch("/api/dashboard/goal", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, amount })
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      throw new Error(data.message || "Could not save goal.");
+    }
+
+    renderDashboardGoal(data.supportGoal, currentDashboardEarnings);
+    setGoalStatus("Goal saved.", "success");
+  } catch (err) {
+    setGoalStatus(err.message || "Could not save goal.", "warn");
+  } finally {
+    button.disabled = false;
+    button.innerText = "Save goal";
+  }
+}
+
 async function removeCampaign(campaignId) {
   const campaign = campaignsCache.find(item => item.id === campaignId);
   const title = campaign?.title || "this campaign";
@@ -1004,9 +1133,10 @@ async function removeCampaign(campaignId) {
   applyCampaignResponse(data);
   const statsRes = await fetch("/api/dashboard/stats");
   const countData = await statsRes.json();
+  currentDashboardEarnings = Number(countData.earnings || 0);
   renderPlatformStats(countData.platformCounts || {});
   document.getElementById("totalSupports").innerText = Number(countData.supports || 0);
-  document.getElementById("estimatedEarned").innerText = "$" + Number(countData.earnings || 0).toFixed(2);
+  renderDashboardGoal(countData.supportGoal, currentDashboardEarnings);
 }
 
 document.getElementById("campaignUrl").addEventListener("input", scheduleCampaignMetadataLookup);
