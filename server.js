@@ -1629,6 +1629,34 @@ function getCampaignsForCreator(creatorId) {
   `).all(creatorId).map(campaignRowToJson);
 }
 
+function getCampaignOptionsForCreator(creatorId, limit = 5) {
+  return getCampaignsForCreator(creatorId)
+    .filter(campaign => !isLegacyCampaign(campaign))
+    .sort((a, b) => {
+      const bTime = new Date(b.activatedAt || b.createdAt || 0).getTime();
+      const aTime = new Date(a.activatedAt || a.createdAt || 0).getTime();
+      return bTime - aTime;
+    })
+    .slice(0, limit);
+}
+
+function getSupportCampaignForCreator(creatorId, requestedCampaignId = "") {
+  const selectedCampaignId = String(requestedCampaignId || "").trim();
+
+  if (selectedCampaignId) {
+    const selectedCampaign = getCampaignById(selectedCampaignId);
+    if (
+      selectedCampaign &&
+      selectedCampaign.creatorId === creatorId &&
+      !isLegacyCampaign(selectedCampaign)
+    ) {
+      return selectedCampaign;
+    }
+  }
+
+  return getActiveCampaignForCreator(creatorId);
+}
+
 function getCreatorCampaignTotals(creatorId) {
   const campaigns = getCampaignsForCreator(creatorId);
   return campaigns.reduce((totals, campaign) => {
@@ -1652,13 +1680,15 @@ function getCampaignSupportCount(campaignId, viewerKey) {
   return Number(row?.count || 0);
 }
 
-function getCampaignStatusPayload(req, creatorId, fingerprint) {
-  const activeCampaign = getActiveCampaignForCreator(creatorId);
+function getCampaignStatusPayload(req, creatorId, fingerprint, requestedCampaignId = "") {
+  const activeCampaign = getSupportCampaignForCreator(creatorId, requestedCampaignId);
+  const campaignOptions = getCampaignOptionsForCreator(creatorId);
   const viewerKey = getCampaignViewerKey(req, fingerprint);
 
   if (!activeCampaign) {
     return {
       activeCampaign: null,
+      campaignOptions,
       completedSupports: 0,
       remainingSupports: 0,
       maxSupports: MAX_CAMPAIGN_SUPPORTS_PER_VIEWER,
@@ -1672,6 +1702,7 @@ function getCampaignStatusPayload(req, creatorId, fingerprint) {
 
   return {
     activeCampaign,
+    campaignOptions,
     completedSupports,
     remainingSupports,
     maxSupports: MAX_CAMPAIGN_SUPPORTS_PER_VIEWER,
@@ -2585,7 +2616,7 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
   }
 
   if (type === 'ad_start') {
-    const activeCampaign = getActiveCampaignForCreator(creatorKey);
+    const activeCampaign = getSupportCampaignForCreator(creatorKey, campaignId);
 
     if (!activeCampaign) {
       return res.json({
@@ -2685,14 +2716,6 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
         success: false,
         code: "CAMPAIGN_NOT_FOUND",
         message: "Campaign not found."
-      });
-    }
-
-    if (campaign.status === "archived") {
-      return res.json({
-        success: false,
-        code: "CAMPAIGN_ARCHIVED",
-        message: "This campaign is no longer available."
       });
     }
 
@@ -3568,7 +3591,7 @@ app.post("/support/attribute-video", enforceRateLimit("support-attribute-video",
 
 // ---------- Creator page route ----------
 app.post("/support/status", enforceRateLimit("support-status", 60_000, 60), (req, res) => {
-  const { fingerprint, timeZone, creator, deviceFamily = "" } = req.body;
+  const { fingerprint, timeZone, creator, deviceFamily = "", campaignId = "" } = req.body;
 
   if (!fingerprint || !timeZone) {
     return res.json({ success: false });
@@ -3582,7 +3605,7 @@ let lifetimeSupports = getSupporterLifetimeSupports(anonId);
 let creatorSupports = 0;
 const creatorKey = getCanonicalCreatorKey(creator, req);
 const { stats: creatorRecord } = getCreatorStatsRecord(creatorKey, req);
-const campaignStatus = getCampaignStatusPayload(req, creatorKey, fingerprint);
+const campaignStatus = getCampaignStatusPayload(req, creatorKey, fingerprint, campaignId);
 const isCreatorOwnerRequest =
   isLoggedInCreatorForSlug(req, creator) ||
   isKnownCreatorOwnerDevice(req, creator, deviceFamily);

@@ -33,7 +33,7 @@ test("owner-device self-support guard is wired through viewer and dashboard", ()
   assert.match(server, /isCreatorOwner:\s*isCreatorOwnerRequest/);
   assert.match(viewer, /serverIdentifiedCreatorOwner/);
   assert.match(viewer, /You cannot support your own island/);
-  assert.match(viewer, /deviceFamily\s*\}/);
+  assert.match(viewer, /deviceFamily,\s*campaignId:\s*getSelectedCampaignId\(\)/);
   assert.match(viewer, /credentials:\s*"same-origin"/);
   assert.match(dashboard, /getDashboardDeviceFamily/);
 });
@@ -94,8 +94,13 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(server, /function saveThumbnailUpload/);
   assert.match(viewer, /activeCampaign/);
   assert.match(viewer, /campaignRemainingSupports/);
-  assert.doesNotMatch(viewer, /Which video made you want to support/);
-  assert.doesNotMatch(viewer, /showVideoAttributionPrompt/);
+  assert.match(viewer, /Which video made you want to support/);
+  assert.match(viewer, /campaignChoiceStorageKey/);
+  assert.match(viewer, /sessionStorage\.setItem\(campaignChoiceStorageKey/);
+  assert.match(viewer, /function showCampaignChoicePrompt/);
+  assert.match(viewer, /function selectCampaignChoice/);
+  assert.match(viewer, /function skipCampaignChoice/);
+  assert.match(viewer, /campaignOptions\.slice\(0, 5\)/);
   assert.match(viewer, /sourcePlatform/);
   assert.match(dashboard, /Looking up video details/);
   assert.match(dashboard, /thumbnailImageData/);
@@ -112,6 +117,8 @@ test("campaign tables and active campaign uniqueness are migrated in SQLite", ()
   assert.match(server, /UNIQUE \(creator_id, normalized_video_key\)/);
   assert.match(server, /attempt_id TEXT UNIQUE/);
   assert.match(server, /function isLegacyCampaign/);
+  assert.match(server, /function getCampaignOptionsForCreator/);
+  assert.match(server, /function getSupportCampaignForCreator/);
   assert.match(server, /normalized_video_key NOT LIKE 'legacy:%'/);
   assert.match(server, /ensureLegacyCampaigns\(\)/);
 });
@@ -137,9 +144,12 @@ test("viewer support completion is assigned automatically to the active campaign
   assert.match(viewer, /No active support island/);
   assert.match(viewer, /You fully supported this video/);
   assert.match(viewer, /campaignId:\s*activeCampaign\.id/);
+  assert.match(viewer, /campaignId:\s*getSelectedCampaignId\(\)/);
   assert.match(viewer, /supportAttemptId:\s*activeSupportAttemptId/);
   assert.match(viewer, /campaignRemainingSupports <= 0/);
   assert.doesNotMatch(viewer, /submitVideoAttribution/);
+  assert.match(server, /getSupportCampaignForCreator\(creatorKey, campaignId\)/);
+  assert.match(server, /getCampaignStatusPayload\(req, creatorKey, fingerprint, campaignId\)/);
 });
 
 test("dashboard uses one permanent creator link for every source", () => {

@@ -2919,6 +2919,18 @@
   </div>
 </div>
 
+<div id="campaignChoiceModal" class="wish-overlay hidden" aria-hidden="true">
+  <div class="attribution-card">
+    <h3>Which video made you want to support?</h3>
+    <p>This helps the creator see which posts are connecting with viewers.</p>
+    <div class="attribution-list" id="campaignChoiceList"></div>
+    <div class="attribution-actions">
+      <button type="button" onclick="skipCampaignChoice()">Skip</button>
+    </div>
+    <div class="attribution-note" id="campaignChoiceNote"></div>
+  </div>
+</div>
+
 </aside>
 </div>
 
@@ -3122,10 +3134,14 @@ let supporterLifetimeSupports = 0;
 let supporterCreatorSupports = 0;
 let creatorTotalSupports = 0;
 let activeCampaign = null;
+let campaignOptions = [];
 let campaignCompletedSupports = 0;
 let campaignRemainingSupports = 0;
 let campaignMaxSupports = 3;
 let activeSupportAttemptId = "";
+let selectedCampaignChoiceId = "";
+let campaignChoiceWasSkipped = false;
+let campaignChoicePromptOpen = false;
 let supporterBadgeCollection = [];
 let equippedSupporterBadge = null;
 let selectedSupporterBadgeId = "";
@@ -3282,6 +3298,33 @@ const videoId = params.get("video") || "main";
 const videoTitle = params.get("title") || "Main support page";
 const videoThumbnail = params.get("thumbnail") || "";
 const platform = params.get("platform") || "unknown";
+const campaignChoiceStorageKey = `campaignChoice:${creator}:${sourcePlatform}:${window.location.pathname}${window.location.search}`;
+
+function getStoredCampaignChoice() {
+  try {
+    return JSON.parse(sessionStorage.getItem(campaignChoiceStorageKey) || "null");
+  } catch (_) {
+    return null;
+  }
+}
+
+const storedCampaignChoice = getStoredCampaignChoice();
+if (storedCampaignChoice?.type === "selected" && storedCampaignChoice.campaignId) {
+  selectedCampaignChoiceId = String(storedCampaignChoice.campaignId);
+} else if (storedCampaignChoice?.type === "skipped") {
+  campaignChoiceWasSkipped = true;
+}
+
+function saveCampaignChoice(choice) {
+  try {
+    sessionStorage.setItem(campaignChoiceStorageKey, JSON.stringify(choice));
+  } catch (_) {}
+}
+
+function getSelectedCampaignId() {
+  return campaignChoiceWasSkipped ? "" : selectedCampaignChoiceId;
+}
+
 function getCampaignPlatformLabel(value) {
   return {
     tiktok: "TikTok",
@@ -3290,6 +3333,97 @@ function getCampaignPlatformLabel(value) {
     direct: "Direct",
     other: "Other"
   }[String(value || "").toLowerCase()] || "Video";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderCampaignChoiceThumb(campaign) {
+  if (campaign?.thumbnailUrl) {
+    return `<img class="attribution-thumb" src="${escapeHtml(campaign.thumbnailUrl)}" alt="">`;
+  }
+
+  return `<div class="attribution-thumb-placeholder">${escapeHtml(getCampaignPlatformLabel(campaign?.platform))}</div>`;
+}
+
+function closeCampaignChoicePrompt() {
+  const modal = document.getElementById("campaignChoiceModal");
+  campaignChoicePromptOpen = false;
+  if (!modal) return;
+
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function shouldShowCampaignChoicePrompt() {
+  if (campaignChoicePromptOpen || selectedCampaignChoiceId || campaignChoiceWasSkipped) return false;
+  if (isCreatorViewingOwnIsland || serverIdentifiedCreatorOwner) return false;
+  if (!Array.isArray(campaignOptions) || !campaignOptions.length) return false;
+
+  return campaignOptions.length > 1 || !activeCampaign;
+}
+
+function showCampaignChoicePrompt() {
+  if (!shouldShowCampaignChoicePrompt()) return false;
+
+  const modal = document.getElementById("campaignChoiceModal");
+  const list = document.getElementById("campaignChoiceList");
+  const note = document.getElementById("campaignChoiceNote");
+  if (!modal || !list) return false;
+
+  list.innerHTML = campaignOptions.slice(0, 5).map(campaign => `
+    <button class="attribution-option" type="button" onclick="selectCampaignChoice('${escapeHtml(campaign.id)}')">
+      ${renderCampaignChoiceThumb(campaign)}
+      <span>
+        <strong>${escapeHtml(campaign.title || "Untitled campaign")}</strong>
+        <span>${escapeHtml(getCampaignPlatformLabel(campaign.platform))} • ${Number(campaign.totalSupports || 0)} supports</span>
+      </span>
+    </button>
+  `).join("");
+
+  if (note) note.innerText = "";
+  campaignChoicePromptOpen = true;
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+  return true;
+}
+
+function selectCampaignChoice(campaignId) {
+  const selectedCampaign = campaignOptions.find(campaign => campaign.id === campaignId);
+  if (!selectedCampaign) {
+    const note = document.getElementById("campaignChoiceNote");
+    if (note) note.innerText = "That campaign is no longer available.";
+    return;
+  }
+
+  selectedCampaignChoiceId = selectedCampaign.id;
+  campaignChoiceWasSkipped = false;
+  activeCampaign = selectedCampaign;
+  saveCampaignChoice({
+    type: "selected",
+    campaignId: selectedCampaign.id,
+    savedAt: Date.now()
+  });
+  closeCampaignChoicePrompt();
+  updateCampaignSupportUi({ skipStatus: true });
+  checkSupportStatus({ skipCampaignChoicePrompt: true });
+}
+
+function skipCampaignChoice() {
+  selectedCampaignChoiceId = "";
+  campaignChoiceWasSkipped = true;
+  saveCampaignChoice({
+    type: "skipped",
+    savedAt: Date.now()
+  });
+  closeCampaignChoicePrompt();
+  updateCampaignSupportUi();
 }
 
 function loadContentCard() {
@@ -5368,7 +5502,7 @@ async function saveSupporterProfile() {
       }, 1000);
     }
 
-    async function checkSupportStatus() {
+    async function checkSupportStatus(options = {}) {
   const res = await fetch("/support/status", {
     method: "POST",
     headers: {
@@ -5379,7 +5513,8 @@ body: JSON.stringify({
   timeZone: userTimeZone,
   anonId,
   creator,
-  deviceFamily
+  deviceFamily,
+  campaignId: getSelectedCampaignId()
 })
   });
 
@@ -5392,6 +5527,7 @@ body: JSON.stringify({
   serverHasSupporterProfile = usingCreatorIdentity || Boolean(data.hasProfile);
   supporterLifetimeSupports = Number(data.lifetimeSupports || 0);
   supporterCreatorSupports = Number(data.creatorSupports || 0);
+  campaignOptions = Array.isArray(data.campaignOptions) ? data.campaignOptions : [];
   activeCampaign = data.activeCampaign || null;
   campaignCompletedSupports = Number(data.completedSupports || 0);
   campaignRemainingSupports = Number(data.remainingSupports || 0);
@@ -5416,6 +5552,9 @@ body: JSON.stringify({
 
   updateSupporterMenu();
   updateCampaignSupportUi();
+  if (!options.skipCampaignChoicePrompt) {
+    showCampaignChoicePrompt();
+  }
 
   if (data.wait && data.wait > 0) {
     cooldownUntil = Date.now() + data.wait * 1000;
@@ -5809,6 +5948,10 @@ body: JSON.stringify({
     async function startAd() {
   if (isCreatorViewingOwnIsland && !ownerSelfSupportTestMode) {
     window.location.href = "/dashboard";
+    return;
+  }
+
+  if (showCampaignChoicePrompt()) {
     return;
   }
 
