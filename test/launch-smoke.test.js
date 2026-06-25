@@ -96,6 +96,9 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(viewer, /campaignRemainingSupports/);
   assert.match(viewer, /Which video made you want to support/);
   assert.doesNotMatch(viewer, /This helps the creator see which posts are connecting with viewers/);
+  assert.doesNotMatch(viewer, /contentPlatformText/);
+  assert.doesNotMatch(viewer, /content-platform/);
+  assert.doesNotMatch(viewer, /getCampaignPlatformLabel/);
   assert.match(viewer, /campaignChoiceStorageKey/);
   assert.match(viewer, /sessionStorage\.setItem\(campaignChoiceStorageKey/);
   assert.match(viewer, /function showCampaignChoicePrompt/);

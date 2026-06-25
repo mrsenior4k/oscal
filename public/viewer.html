@@ -1382,15 +1382,6 @@
     line-height: 1.25;
   }
 
-  .content-platform {
-    margin-top: 6px;
-    color: #7dd3fc;
-    font-size: 12px;
-    font-weight: 900;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-  }
-
   .card p.lead {
     margin: 0;
     color: var(--muted);
@@ -2752,7 +2743,6 @@
 
   <div>
     <div class="content-title" id="contentTitleText"></div>
-    <div class="content-platform" id="contentPlatformText"></div>
   </div>
 </div>
             <div class="avatar-wrap">
@@ -3324,16 +3314,6 @@ function getSelectedCampaignId() {
   return campaignChoiceWasSkipped ? "" : selectedCampaignChoiceId;
 }
 
-function getCampaignPlatformLabel(value) {
-  return {
-    tiktok: "TikTok",
-    instagram: "Instagram",
-    youtube: "YouTube",
-    direct: "Direct",
-    other: "Other"
-  }[String(value || "").toLowerCase()] || "Video";
-}
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -3348,7 +3328,7 @@ function renderCampaignChoiceThumb(campaign) {
     return `<img class="attribution-thumb" src="${escapeHtml(campaign.thumbnailUrl)}" alt="">`;
   }
 
-  return `<div class="attribution-thumb-placeholder">${escapeHtml(getCampaignPlatformLabel(campaign?.platform))}</div>`;
+  return `<div class="attribution-thumb-placeholder" aria-hidden="true"></div>`;
 }
 
 function closeCampaignChoicePrompt() {
@@ -3381,7 +3361,6 @@ function showCampaignChoicePrompt() {
       ${renderCampaignChoiceThumb(campaign)}
       <span>
         <strong>${escapeHtml(campaign.title || "Untitled campaign")}</strong>
-        <span>${escapeHtml(getCampaignPlatformLabel(campaign.platform))}</span>
       </span>
     </button>
   `).join("");
@@ -3432,7 +3411,6 @@ function loadContentCard() {
 
   if (campaign) {
     document.getElementById("contentTitleText").innerText = campaign.title || "Active campaign";
-    document.getElementById("contentPlatformText").innerText = getCampaignPlatformLabel(campaign.platform);
 
     if (campaign.thumbnailUrl) {
       thumb.src = campaign.thumbnailUrl;
@@ -3452,7 +3430,6 @@ function loadContentCard() {
   }
 
   document.getElementById("contentTitleText").innerText = videoTitle;
-  document.getElementById("contentPlatformText").innerText = platform;
 
   if (videoThumbnail) {
     thumb.src = videoThumbnail;
