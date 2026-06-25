@@ -1666,24 +1666,42 @@ function getCreatorCampaignTotals(creatorId) {
   }, { supports: 0, earnings: 0 });
 }
 
-function getCampaignViewerKey(req, fingerprint) {
+function getCampaignViewerKey(req, fingerprint, deviceFamily = "") {
+  const family = getOwnerDeviceFamily(deviceFamily);
+
+  if (family) {
+    return hashFingerprint(`campaign-viewer-device|${getClientIp(req)}|${family}`);
+  }
+
   return getDeviceProgressKey(req, fingerprint);
 }
 
-function getCampaignSupportCount(campaignId, viewerKey) {
+function getCampaignViewerKeys(req, fingerprint, deviceFamily = "") {
+  return Array.from(new Set([
+    getCampaignViewerKey(req, fingerprint, deviceFamily),
+    getDeviceProgressKey(req, fingerprint)
+  ].filter(Boolean)));
+}
+
+function getCampaignSupportCount(campaignId, viewerKeys) {
+  const keys = Array.isArray(viewerKeys) ? viewerKeys : [viewerKeys];
+  const uniqueKeys = Array.from(new Set(keys.filter(Boolean)));
+  if (!uniqueKeys.length) return 0;
+
+  const placeholders = uniqueKeys.map(() => "?").join(", ");
   const row = db.prepare(`
     SELECT COUNT(*) AS count
     FROM campaign_supports
-    WHERE campaign_id = ? AND viewer_key = ?
-  `).get(campaignId, viewerKey);
+    WHERE campaign_id = ? AND viewer_key IN (${placeholders})
+  `).get(campaignId, ...uniqueKeys);
 
   return Number(row?.count || 0);
 }
 
-function getCampaignStatusPayload(req, creatorId, fingerprint, requestedCampaignId = "") {
+function getCampaignStatusPayload(req, creatorId, fingerprint, requestedCampaignId = "", deviceFamily = "") {
   const activeCampaign = getSupportCampaignForCreator(creatorId, requestedCampaignId);
   const campaignOptions = getCampaignOptionsForCreator(creatorId);
-  const viewerKey = getCampaignViewerKey(req, fingerprint);
+  const viewerKeys = getCampaignViewerKeys(req, fingerprint, deviceFamily);
 
   if (!activeCampaign) {
     return {
@@ -1697,7 +1715,7 @@ function getCampaignStatusPayload(req, creatorId, fingerprint, requestedCampaign
     };
   }
 
-  const completedSupports = getCampaignSupportCount(activeCampaign.id, viewerKey);
+  const completedSupports = getCampaignSupportCount(activeCampaign.id, viewerKeys);
   const remainingSupports = Math.max(0, MAX_CAMPAIGN_SUPPORTS_PER_VIEWER - completedSupports);
 
   return {
@@ -2578,7 +2596,8 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
   }
 
   const deviceProgressKey = getDeviceProgressKey(req, fingerprint);
-  const viewerKey = getCampaignViewerKey(req, fingerprint);
+  const viewerKey = getCampaignViewerKey(req, fingerprint, deviceFamily);
+  const viewerKeys = getCampaignViewerKeys(req, fingerprint, deviceFamily);
   const today = getToday(timeZone);
   const now = Date.now();
 
@@ -2635,7 +2654,7 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
       });
     }
 
-    const completedSupports = getCampaignSupportCount(activeCampaign.id, viewerKey);
+    const completedSupports = getCampaignSupportCount(activeCampaign.id, viewerKeys);
     if (completedSupports >= MAX_CAMPAIGN_SUPPORTS_PER_VIEWER) {
       return res.json({
         success: false,
@@ -2736,7 +2755,7 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
       });
     }
 
-    const completedBefore = getCampaignSupportCount(campaign.id, viewerKey);
+    const completedBefore = getCampaignSupportCount(campaign.id, viewerKeys);
     if (completedBefore >= MAX_CAMPAIGN_SUPPORTS_PER_VIEWER) {
       return res.json({
         success: false,
@@ -2753,7 +2772,7 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
 
     db.exec("BEGIN IMMEDIATE");
     try {
-      const lockedCompletedBefore = getCampaignSupportCount(campaign.id, viewerKey);
+      const lockedCompletedBefore = getCampaignSupportCount(campaign.id, viewerKeys);
       if (lockedCompletedBefore >= MAX_CAMPAIGN_SUPPORTS_PER_VIEWER) {
         db.exec("ROLLBACK");
         return res.json({
@@ -2886,7 +2905,7 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
 
     saveData();
 
-    const completedSupports = getCampaignSupportCount(campaign.id, viewerKey);
+    const completedSupports = getCampaignSupportCount(campaign.id, viewerKeys);
     const remainingSupports = Math.max(0, MAX_CAMPAIGN_SUPPORTS_PER_VIEWER - completedSupports);
     const creatorSupportsForViewer = creatorStats[creatorKey].recentSupports.filter(item =>
       String(item.anonId) === String(anonId)
@@ -3605,7 +3624,13 @@ let lifetimeSupports = getSupporterLifetimeSupports(anonId);
 let creatorSupports = 0;
 const creatorKey = getCanonicalCreatorKey(creator, req);
 const { stats: creatorRecord } = getCreatorStatsRecord(creatorKey, req);
-const campaignStatus = getCampaignStatusPayload(req, creatorKey, fingerprint, campaignId);
+const campaignStatus = getCampaignStatusPayload(
+  req,
+  creatorKey,
+  fingerprint,
+  campaignId,
+  deviceFamily
+);
 const isCreatorOwnerRequest =
   isLoggedInCreatorForSlug(req, creator) ||
   isKnownCreatorOwnerDevice(req, creator, deviceFamily);

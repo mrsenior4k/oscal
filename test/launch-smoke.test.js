@@ -119,6 +119,10 @@ test("campaign tables and active campaign uniqueness are migrated in SQLite", ()
   assert.match(server, /function isLegacyCampaign/);
   assert.match(server, /function getCampaignOptionsForCreator/);
   assert.match(server, /function getSupportCampaignForCreator/);
+  assert.match(server, /function getCampaignViewerKey\(req, fingerprint, deviceFamily = ""\)/);
+  assert.match(server, /campaign-viewer-device/);
+  assert.match(server, /function getCampaignViewerKeys/);
+  assert.match(server, /viewer_key IN \(\$\{placeholders\}\)/);
   assert.match(server, /normalized_video_key NOT LIKE 'legacy:%'/);
   assert.match(server, /ensureLegacyCampaigns\(\)/);
 });
@@ -149,7 +153,9 @@ test("viewer support completion is assigned automatically to the active campaign
   assert.match(viewer, /campaignRemainingSupports <= 0/);
   assert.doesNotMatch(viewer, /submitVideoAttribution/);
   assert.match(server, /getSupportCampaignForCreator\(creatorKey, campaignId\)/);
-  assert.match(server, /getCampaignStatusPayload\(req, creatorKey, fingerprint, campaignId\)/);
+  assert.match(server, /getCampaignStatusPayload\(\s*req,\s*creatorKey,\s*fingerprint,\s*campaignId,\s*deviceFamily\s*\)/);
+  assert.match(server, /getCampaignViewerKey\(req, fingerprint, deviceFamily\)/);
+  assert.match(server, /getCampaignViewerKeys\(req, fingerprint, deviceFamily\)/);
 });
 
 test("dashboard uses one permanent creator link for every source", () => {
