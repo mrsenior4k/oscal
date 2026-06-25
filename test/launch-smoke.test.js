@@ -68,17 +68,22 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.doesNotMatch(dashboard, /function formatSupportTimestamp/);
   assert.match(dashboard, /Your platform links/);
   assert.match(dashboard, /Where supporters came from/);
-  assert.match(dashboard, /Support island campaign/);
+  assert.match(dashboard, /Campaign videos/);
+  assert.match(dashboard, /Add videos supporters can choose from when they support/);
   assert.match(dashboard, /Campaign breakdown/);
-  assert.match(dashboard, /Create campaign/);
-  assert.match(dashboard, /Make active/);
-  assert.match(dashboard, /const canActivate = campaign\.status !== "active";/);
-  assert.match(dashboard, /Deactivate/);
+  assert.match(dashboard, /Add campaign/);
+  assert.doesNotMatch(dashboard, /Make active/);
+  assert.doesNotMatch(dashboard, /const canActivate = campaign\.status !== "active";/);
+  assert.doesNotMatch(dashboard, /Deactivate/);
+  assert.doesNotMatch(dashboard, /activeCampaignCard/);
+  assert.doesNotMatch(dashboard, /renderActiveCampaign/);
+  assert.doesNotMatch(dashboard, /postCampaignAction/);
+  assert.doesNotMatch(dashboard, /function activateCampaign/);
+  assert.doesNotMatch(dashboard, /function deactivateCampaign/);
   assert.match(dashboard, /Thumbnail image upload/);
   assert.match(dashboard, /function isLegacyCampaign/);
   assert.match(dashboard, /function getCampaignUrlFallbackTitle/);
   assert.match(dashboard, /function ensureCampaignFallbackTitle/);
-  assert.match(dashboard, /No active video campaign/);
   assert.match(dashboard, /No video campaigns yet/);
   assert.match(dashboard, /Auto-fill could not load/);
   assert.match(dashboard, /filter\(campaign => !isLegacyCampaign\(campaign\)\)/);
@@ -158,7 +163,7 @@ test("campaign duplicate, activation, and support attempt protections are enforc
 });
 
 test("viewer support completion is assigned automatically to the active campaign", () => {
-  assert.match(viewer, /No active support island/);
+  assert.match(viewer, /No support video yet/);
   assert.match(viewer, /You fully supported this video/);
   assert.match(viewer, /campaignId:\s*activeCampaign\.id/);
   assert.match(viewer, /campaignId:\s*getSelectedCampaignId\(\)/);

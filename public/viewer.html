@@ -3461,7 +3461,7 @@ function updateCampaignSupportUi(options = {}) {
     if (ownerBlocked) {
       watchBtnLabel.innerText = "Back to dashboard";
     } else if (!hasCampaign) {
-      watchBtnLabel.innerText = "No active support island";
+      watchBtnLabel.innerText = "No support video yet";
     } else if (fullySupported) {
       watchBtnLabel.innerText = "Fully supported";
     } else {
@@ -3482,12 +3482,12 @@ function updateCampaignSupportUi(options = {}) {
       setStatus("You cannot support your own island.", "warning");
     } else if (!hasCampaign) {
       setStatus(
-        `${getCreatorDisplayName()} does not currently have an active support island. Check back when they activate their next video.`,
+        `${getCreatorDisplayName()} has not added a support video yet. Check back soon.`,
         "warning"
       );
     } else if (fullySupported) {
       setStatus(
-        `You fully supported this video. Come back when ${getCreatorDisplayName()} activates another video.`,
+        `You fully supported this video. Choose another video when ${getCreatorDisplayName()} adds one.`,
         "success"
       );
     } else {

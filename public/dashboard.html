@@ -457,12 +457,8 @@
 
     <section class="main dashboard-row">
       <div class="card">
-        <div class="label">Support island campaign</div>
-        <p class="sub">Create video campaigns and choose the one your permanent Oscal link supports right now.</p>
-
-        <div class="video-list" id="activeCampaignCard">
-          <p class="empty">No active campaign yet.</p>
-        </div>
+        <div class="label">Campaign videos</div>
+        <p class="sub">Add videos supporters can choose from when they support.</p>
 
         <input id="campaignTitle" class="form-control" placeholder="Campaign title">
         <input id="campaignUrl" class="form-control" placeholder="Video URL">
@@ -477,7 +473,7 @@
         <textarea id="campaignDescription" class="form-control" rows="3" placeholder="Optional description"></textarea>
 
         <button class="btn" id="createCampaignBtn" style="margin-top:12px;" onclick="createCampaign()">
-          Create campaign
+          Add campaign
         </button>
 
         <div class="form-error" id="campaignError"></div>
@@ -504,7 +500,6 @@
 let publicLink = "";
 let currentProfile = null;
 let campaignsCache = [];
-let activeCampaignCache = null;
 let campaignLookupTimer = null;
 let campaignLookupNonce = 0;
 let selectedCampaignThumbnailImageData = "";
@@ -640,7 +635,6 @@ function formatCampaignDate(value) {
 function campaignMetaLine(campaign) {
   return [
     PLATFORM_LABELS[campaign.platform] || "Video",
-    campaign.status,
     `${Number(campaign.totalSupports || 0)} supports`,
     `${formatMoney(campaign.totalEarnings)} earned`
   ].join(" • ");
@@ -650,35 +644,12 @@ function isLegacyCampaign(campaign) {
   return String(campaign?.normalizedVideoKey || "").startsWith("legacy:");
 }
 
-function renderActiveCampaign(campaign) {
-  const card = document.getElementById("activeCampaignCard");
-  activeCampaignCache = campaign && !isLegacyCampaign(campaign) ? campaign : null;
-
-  if (!activeCampaignCache) {
-    card.innerHTML = `<p class="empty">No active video campaign. Create one below, then make it active.</p>`;
-    return;
-  }
-
-  card.innerHTML = `
-    <div class="video-item">
-      ${renderCampaignThumb(activeCampaignCache)}
-      <div>
-        <strong>${escapeHtml(activeCampaignCache.title)}</strong>
-        <span>Active support island • ${Number(activeCampaignCache.totalSupports || 0)} supports • ${formatMoney(activeCampaignCache.totalEarnings)} earned</span>
-        <span>Activated ${escapeHtml(formatCampaignDate(activeCampaignCache.activatedAt))}</span>
-      </div>
-      <div class="video-actions">
-        <a class="mini-btn" href="${escapeHtml(activeCampaignCache.videoUrl)}" target="_blank" rel="noopener">View video</a>
-        <button class="mini-btn danger" type="button" onclick="deactivateCampaign('${escapeHtml(activeCampaignCache.id)}')">Deactivate</button>
-      </div>
-    </div>
-  `;
-}
-
 function renderCampaigns(campaigns = []) {
   campaignsCache = Array.isArray(campaigns) ? campaigns : [];
   const list = document.getElementById("campaignsList");
-  const visibleCampaigns = campaignsCache.filter(campaign => !isLegacyCampaign(campaign));
+  const visibleCampaigns = campaignsCache
+    .filter(campaign => !isLegacyCampaign(campaign))
+    .filter(campaign => campaign.status !== "archived");
 
   if (!visibleCampaigns.length) {
     list.innerHTML = `<p class="empty">No video campaigns yet.</p>`;
@@ -686,11 +657,7 @@ function renderCampaigns(campaigns = []) {
     return;
   }
 
-  list.innerHTML = visibleCampaigns.map(campaign => {
-    const canActivate = campaign.status !== "active";
-    const canDeactivate = campaign.status === "active";
-
-    return `
+  list.innerHTML = visibleCampaigns.map(campaign => `
       <div class="video-item">
         ${renderCampaignThumb(campaign)}
         <div>
@@ -701,12 +668,9 @@ function renderCampaigns(campaigns = []) {
         </div>
         <div class="video-actions">
           <a class="mini-btn" href="${escapeHtml(campaign.videoUrl)}" target="_blank" rel="noopener">Open</a>
-          ${canActivate ? `<button class="mini-btn" type="button" onclick="activateCampaign('${escapeHtml(campaign.id)}')">Make active</button>` : ""}
-          ${canDeactivate ? `<button class="mini-btn danger" type="button" onclick="deactivateCampaign('${escapeHtml(campaign.id)}')">Deactivate</button>` : ""}
         </div>
       </div>
-    `;
-  }).join("");
+    `).join("");
 
   renderCampaignBreakdown(campaignsCache);
 }
@@ -727,7 +691,7 @@ function renderCampaignBreakdown(campaigns = []) {
     <div class="platform-stat">
       <div>
         <strong>${escapeHtml(campaign.title || "Untitled campaign")}</strong>
-        <span>${escapeHtml(campaign.status)} • ${formatMoney(campaign.totalEarnings)} earned</span>
+        <span>${formatMoney(campaign.totalEarnings)} earned</span>
       </div>
       <strong>${Number(campaign.totalSupports || 0)}</strong>
     </div>
@@ -935,7 +899,6 @@ function applyCampaignResponse(data) {
   if (!data?.success) return;
 
   if (Array.isArray(data.campaigns)) renderCampaigns(data.campaigns);
-  if ("activeCampaign" in data) renderActiveCampaign(data.activeCampaign);
 }
 
 async function refreshCampaigns() {
@@ -973,7 +936,6 @@ async function refreshCampaigns() {
   document.getElementById("totalSupports").innerText = supports;
   document.getElementById("estimatedEarned").innerText = "$" + earnings.toFixed(2);
   renderPlatformStats(countData.platformCounts || {});
-  renderActiveCampaign(countData.activeCampaign || null);
   renderCampaigns(countData.campaigns || []);
 }
 
@@ -1016,44 +978,8 @@ async function createCampaign() {
     setCampaignError(err.message || "Could not create campaign.");
   } finally {
     button.disabled = false;
-    button.innerText = "Create campaign";
+    button.innerText = "Add campaign";
   }
-}
-
-async function postCampaignAction(campaignId, action) {
-  setCampaignError("");
-
-  const res = await fetch(`/api/dashboard/campaigns/${encodeURIComponent(campaignId)}/${action}`, {
-    method: "POST"
-  });
-  const data = await res.json();
-
-  if (!data.success) {
-    setCampaignError(data.message || "Could not update campaign.");
-    return;
-  }
-
-  applyCampaignResponse(data);
-  const statsRes = await fetch("/api/dashboard/stats");
-  const countData = await statsRes.json();
-  renderPlatformStats(countData.platformCounts || {});
-  document.getElementById("totalSupports").innerText = Number(countData.supports || 0);
-  document.getElementById("estimatedEarned").innerText = "$" + Number(countData.earnings || 0).toFixed(2);
-}
-
-function activateCampaign(campaignId) {
-  const campaign = campaignsCache.find(item => item.id === campaignId);
-  const title = campaign?.title || "this campaign";
-  const confirmed = window.confirm(
-    `Make "${title}" active?\n\nAll new supports through your permanent Oscal link will go to this campaign.\nPrevious campaign support history will remain unchanged.`
-  );
-
-  if (!confirmed) return;
-  postCampaignAction(campaignId, "activate");
-}
-
-function deactivateCampaign(campaignId) {
-  postCampaignAction(campaignId, "deactivate");
 }
 
 document.getElementById("campaignUrl").addEventListener("input", scheduleCampaignMetadataLookup);

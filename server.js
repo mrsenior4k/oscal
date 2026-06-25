@@ -1525,7 +1525,7 @@ function campaignErrorPayload(err) {
     LEGACY_CAMPAIGN_LOCKED: 409
   };
   const messageByCode = {
-    NO_ACTIVE_CAMPAIGN: "This creator does not currently have an active support island.",
+    NO_ACTIVE_CAMPAIGN: "This creator has not added a support video yet.",
     CAMPAIGN_NOT_FOUND: "Campaign not found.",
     CAMPAIGN_NOT_OWNED: "That campaign does not belong to this creator.",
     CAMPAIGN_ALREADY_ACTIVE: "That campaign is already active.",
@@ -1632,12 +1632,17 @@ function getCampaignsForCreator(creatorId) {
 function getCampaignOptionsForCreator(creatorId, limit = 5) {
   return getCampaignsForCreator(creatorId)
     .filter(campaign => !isLegacyCampaign(campaign))
+    .filter(campaign => campaign.status !== "archived")
     .sort((a, b) => {
       const bTime = new Date(b.activatedAt || b.createdAt || 0).getTime();
       const aTime = new Date(a.activatedAt || a.createdAt || 0).getTime();
       return bTime - aTime;
     })
     .slice(0, limit);
+}
+
+function getDefaultSupportCampaignForCreator(creatorId) {
+  return getCampaignOptionsForCreator(creatorId, 1)[0] || null;
 }
 
 function getSupportCampaignForCreator(creatorId, requestedCampaignId = "") {
@@ -1654,7 +1659,7 @@ function getSupportCampaignForCreator(creatorId, requestedCampaignId = "") {
     }
   }
 
-  return getActiveCampaignForCreator(creatorId);
+  return getDefaultSupportCampaignForCreator(creatorId);
 }
 
 function getCreatorCampaignTotals(creatorId) {
@@ -2667,7 +2672,7 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
       return res.json({
         success: false,
         code: "NO_ACTIVE_CAMPAIGN",
-        message: "This creator does not currently have an active support island."
+        message: "This creator has not added a support video yet."
       });
     }
 
@@ -2997,7 +3002,7 @@ app.get('/count/:creator', enforceRateLimit("count", 60_000, 120), (req, res) =>
     .sort((a, b) => b.supports - a.supports)
     .slice(0, 5);
   const campaigns = getCampaignsForCreator(creatorKey);
-  const activeCampaign = getActiveCampaignForCreator(creatorKey);
+  const activeCampaign = getDefaultSupportCampaignForCreator(creatorKey);
   const campaignTotals = campaigns.reduce((totals, campaign) => {
     totals.supports += Number(campaign.totalSupports || 0);
     totals.earnings += Number(campaign.totalEarnings || 0);
@@ -3223,7 +3228,7 @@ app.get("/api/creator/:slug", enforceRateLimit("creator-profile", 60_000, 120), 
   const creator = getCanonicalCreatorKey(profile.slug || req.params.slug, req);
   res.json({
     ...profile,
-    activeCampaign: getActiveCampaignForCreator(creator)
+    activeCampaign: getDefaultSupportCampaignForCreator(creator)
   });
 });
 app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
@@ -3241,7 +3246,7 @@ app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
     .slice(0, 5);
   const attributionStats = getVideoAttributionStats(creator);
   const campaigns = getCampaignsForCreator(creator);
-  const activeCampaign = getActiveCampaignForCreator(creator);
+  const activeCampaign = getDefaultSupportCampaignForCreator(creator);
   const campaignTotals = campaigns.reduce((totals, campaign) => {
     totals.supports += Number(campaign.totalSupports || 0);
     totals.earnings += Number(campaign.totalEarnings || 0);
@@ -3282,7 +3287,7 @@ app.get("/api/dashboard/campaigns", requireCreatorLogin, (req, res) => {
 
   res.json({
     success: true,
-    activeCampaign: getActiveCampaignForCreator(creator),
+    activeCampaign: getDefaultSupportCampaignForCreator(creator),
     campaigns: getCampaignsForCreator(creator)
   });
 });
@@ -3313,7 +3318,7 @@ app.post(
       res.json({
         success: true,
         campaign,
-        activeCampaign: getActiveCampaignForCreator(creator),
+        activeCampaign: getDefaultSupportCampaignForCreator(creator),
         campaigns: getCampaignsForCreator(creator)
       });
     } catch (err) {
@@ -3370,7 +3375,7 @@ app.post(
       res.json({
         success: true,
         campaign,
-        activeCampaign: getActiveCampaignForCreator(creator),
+        activeCampaign: getDefaultSupportCampaignForCreator(creator),
         campaigns: getCampaignsForCreator(creator)
       });
     } catch (err) {
@@ -3391,7 +3396,7 @@ app.post(
       res.json({
         success: true,
         campaign,
-        activeCampaign: getActiveCampaignForCreator(creator),
+        activeCampaign: getDefaultSupportCampaignForCreator(creator),
         campaigns: getCampaignsForCreator(creator)
       });
     } catch (err) {
