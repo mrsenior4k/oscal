@@ -69,7 +69,6 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(dashboard, /Create campaign/);
   assert.match(dashboard, /Make active/);
   assert.match(dashboard, /Deactivate/);
-  assert.match(dashboard, /Archive/);
   assert.match(dashboard, /Thumbnail image upload/);
   assert.match(dashboard, /function isLegacyCampaign/);
   assert.match(dashboard, /function getCampaignUrlFallbackTitle/);
@@ -80,6 +79,8 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(dashboard, /filter\(campaign => !isLegacyCampaign\(campaign\)\)/);
   assert.doesNotMatch(dashboard, /Create tracked content link/);
   assert.doesNotMatch(dashboard, /contentThumbnailFile/);
+  assert.doesNotMatch(dashboard, />Archive</);
+  assert.doesNotMatch(dashboard, /function archiveCampaign/);
   assert.doesNotMatch(server, /\/api\/dashboard\/thumbnail/);
   assert.match(server, /app\.get\("\/api\/dashboard\/campaigns"/);
   assert.match(server, /\/api\/dashboard\/campaigns\/metadata/);

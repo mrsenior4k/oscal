@@ -703,7 +703,6 @@ function renderCampaigns(campaigns = []) {
           <a class="mini-btn" href="${escapeHtml(campaign.videoUrl)}" target="_blank" rel="noopener">Open</a>
           ${canActivate ? `<button class="mini-btn" type="button" onclick="activateCampaign('${escapeHtml(campaign.id)}')">Make active</button>` : ""}
           ${canDeactivate ? `<button class="mini-btn danger" type="button" onclick="deactivateCampaign('${escapeHtml(campaign.id)}')">Deactivate</button>` : ""}
-          <button class="mini-btn danger" type="button" onclick="archiveCampaign('${escapeHtml(campaign.id)}')">Archive</button>
         </div>
       </div>
     `;
@@ -1055,12 +1054,6 @@ function activateCampaign(campaignId) {
 
 function deactivateCampaign(campaignId) {
   postCampaignAction(campaignId, "deactivate");
-}
-
-function archiveCampaign(campaignId) {
-  const confirmed = window.confirm("Archive this campaign? Support history stays saved.");
-  if (!confirmed) return;
-  postCampaignAction(campaignId, "archive");
 }
 
 document.getElementById("campaignUrl").addEventListener("input", scheduleCampaignMetadataLookup);
