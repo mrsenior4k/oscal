@@ -154,6 +154,10 @@
       margin-top: 16px;
     }
 
+    .links-row {
+      grid-template-columns: 1fr;
+    }
+
     .link-box {
       margin-top: 14px;
       padding: 14px;
@@ -352,123 +356,6 @@
       white-space: nowrap;
     }
 
-    .feed {
-      display: grid;
-      gap: 12px;
-      margin-top: 16px;
-      max-height: min(560px, 58vh);
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      padding-right: 6px;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(174, 184, 214, 0.42) rgba(255,255,255,0.04);
-    }
-
-    .feed::-webkit-scrollbar {
-      width: 8px;
-    }
-
-    .feed::-webkit-scrollbar-track {
-      background: rgba(255,255,255,0.04);
-      border-radius: 999px;
-    }
-
-    .feed::-webkit-scrollbar-thumb {
-      background: rgba(174, 184, 214, 0.42);
-      border-radius: 999px;
-    }
-
-    .feed-item {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-      padding: 14px;
-      border-radius: 18px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.08);
-    }
-
-    .feed-left strong {
-      display: inline-block;
-      font-size: 14px;
-    }
-
-    .feed-name-line {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
-    .badge-strip {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .supporter-badge {
-      height: 17px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 6px;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 224, 132, 0.34);
-      background: rgba(255, 224, 132, 0.12);
-      color: #ffe8a8;
-      font-size: 9px;
-      line-height: 1;
-      font-weight: 950;
-      letter-spacing: 0;
-      white-space: nowrap;
-    }
-
-    .supporter-badge[data-badge-id="og_wave"] {
-      border-color: rgba(96, 200, 255, 0.42);
-      background: rgba(56, 189, 248, 0.14);
-      color: #bcecff;
-    }
-
-    .supporter-badge[data-badge-id="first_drop"] {
-      border-color: rgba(93, 236, 174, 0.38);
-      background: rgba(53, 224, 161, 0.12);
-      color: #bcf8df;
-    }
-
-    .supporter-badge[data-badge-id="wave_starter"] {
-      border-color: rgba(111, 167, 255, 0.4);
-      background: rgba(37, 99, 235, 0.16);
-      color: #c8dcff;
-    }
-
-    .supporter-badge[data-badge-id="fuel_provider"] {
-      border-color: rgba(255, 201, 90, 0.45);
-      background: rgba(255, 201, 90, 0.14);
-      color: #ffe9ae;
-    }
-
-    .supporter-badge[data-badge-id="day_one"] {
-      border-color: rgba(255, 126, 202, 0.42);
-      background: rgba(255, 126, 202, 0.12);
-      color: #ffd1ef;
-    }
-
-    .feed-left span {
-      display: block;
-      margin-top: 4px;
-      color: #aeb8d6;
-      font-size: 13px;
-    }
-
-    .feed-time {
-      color: #f8faff;
-      font-size: 14px;
-      font-weight: 900;
-      text-align: right;
-      white-space: nowrap;
-    }
-
     .empty {
       color: #aeb8d6;
       font-weight: 700;
@@ -500,7 +387,6 @@
       .grid, .main { grid-template-columns: 1fr; }
       .top { flex-direction: column; align-items: flex-start; }
       .actions { width: 100%; justify-content: flex-start; }
-      .feed { max-height: 480px; }
       .platform-link, .platform-stat { grid-template-columns: 1fr; }
       .video-item { grid-template-columns: auto 1fr; }
       .video-actions {
@@ -558,15 +444,7 @@
     
     </section>
 
-    <section class="main">
-      <div class="card">
-        <div class="label">Recent support</div>
-
-        <div class="feed" id="recentFeed">
-          <p class="empty">No recent support yet. When viewers support you, they’ll appear here.</p>
-        </div>
-      </div>
-
+    <section class="main links-row">
       <div class="card">
         <div class="label">Your platform links</div>
         <p class="sub">Use your permanent Oscal link anywhere you send supporters.</p>
@@ -657,65 +535,6 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
-}
-
-function renderDashboardBadge(badge) {
-  if (!badge) return "";
-
-  return `
-    <span
-      class="supporter-badge"
-      data-badge-id="${escapeHtml(badge.id)}"
-      title="${escapeHtml(`${badge.label}: ${badge.description || ""}`)}"
-    >${escapeHtml(badge.short || badge.label || "Badge")}</span>
-  `;
-}
-
-function getVisibleDashboardBadges(badges = [], equippedBadge = null) {
-  if (equippedBadge?.id) return [equippedBadge];
-
-  return (Array.isArray(badges) ? badges : [])
-    .filter(badge => badge?.id && badge.unlocked !== false)
-    .slice(0, 1);
-}
-
-function renderDashboardBadges(badges = [], equippedBadge = null) {
-  const visibleBadges = getVisibleDashboardBadges(badges, equippedBadge);
-  if (!visibleBadges.length) return "";
-
-  return `
-    <span class="badge-strip">
-      ${visibleBadges.map(renderDashboardBadge).join("")}
-    </span>
-  `;
-}
-
-function renderPlatformPill(platform) {
-  return `<span class="platform-pill">${escapeHtml(PLATFORM_LABELS[platform] || "Direct")}</span>`;
-}
-
-function formatSupportTimestamp(value) {
-  const date = new Date(Number(value || 0));
-  if (Number.isNaN(date.getTime())) return "";
-
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(date);
-}
-
-function formatVideoDate(value) {
-  const time = Number(value || 0);
-  if (!time) return "No date";
-
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric"
-  }).format(new Date(time));
 }
 
 function getPublicCreatorSlug() {
@@ -1089,31 +908,6 @@ async function refreshCampaigns() {
   renderPlatformStats(countData.platformCounts || {});
   renderActiveCampaign(countData.activeCampaign || null);
   renderCampaigns(countData.campaigns || []);
-
-  if (countData.recentSupports && countData.recentSupports.length > 0) {
-    document.getElementById("recentFeed").innerHTML =
-      countData.recentSupports.map(item => {
-        const platform = item.sourcePlatform || "direct";
-        const supportCopy = item.campaignTitle
-          ? `Supported ${item.campaignTitle}`
-          : item.emoji ? item.emoji : "Support echoed into the well";
-
-        return `
-        <div class="feed-item">
-          <div class="feed-left">
-            <div class="feed-name-line">
-              <strong>${escapeHtml(item.name)}</strong>
-              ${renderPlatformPill(platform)}
-              ${renderDashboardBadges(item.badges, item.equippedBadge)}
-            </div>
-            <span>${escapeHtml(supportCopy)}</span>
-          </div>
-
-          <div class="feed-time">${formatSupportTimestamp(item.time)}</div>
-        </div>
-      `;
-      }).join("");
-  }
 }
 
     function copyPublicLink() {

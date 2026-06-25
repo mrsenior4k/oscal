@@ -54,11 +54,10 @@ test("creator login entrypoint is platform neutral", () => {
   assert.doesNotMatch(terms, /sign in with YouTube/);
 });
 
-test("dashboard shows dated support activity and campaign controls", () => {
-  assert.match(dashboard, /function formatSupportTimestamp/);
-  assert.doesNotMatch(dashboard, /toLocaleTimeString/);
-  assert.match(dashboard, /max-height:\s*min\(560px,\s*58vh\)/);
-  assert.match(dashboard, /overflow-y:\s*auto/);
+test("dashboard shows campaign controls without the recent support feed", () => {
+  assert.doesNotMatch(dashboard, /Recent support/);
+  assert.doesNotMatch(dashboard, /recentFeed/);
+  assert.doesNotMatch(dashboard, /function formatSupportTimestamp/);
   assert.match(dashboard, /Your platform links/);
   assert.match(dashboard, /Where supporters came from/);
   assert.match(dashboard, /Support island campaign/);
