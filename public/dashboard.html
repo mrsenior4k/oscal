@@ -748,6 +748,57 @@ function setCampaignMetadataStatus(message = "", tone = "") {
   status.className = `form-status${tone ? ` ${tone}` : ""}`;
 }
 
+function getCampaignUrlFallbackTitle(value, platformLabel = "", platformVideoId = "") {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  let parsed = null;
+
+  try {
+    parsed = new URL(candidate);
+  } catch (_) {
+    return "";
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
+  let label = platformLabel || "Video";
+  let videoId = platformVideoId || "";
+
+  if (!platformLabel) {
+    if (host === "youtube.com" || host === "youtu.be") label = "YouTube";
+    else if (host === "tiktok.com" || host === "vm.tiktok.com" || host === "vt.tiktok.com") label = "TikTok";
+    else if (host === "instagram.com") label = "Instagram";
+  }
+
+  if (!videoId) {
+    const parts = parsed.pathname.split("/").filter(Boolean);
+
+    if (label === "TikTok") {
+      const videoIndex = parts.indexOf("video");
+      videoId = videoIndex >= 0 ? parts[videoIndex + 1] || "" : "";
+    } else if (label === "YouTube") {
+      videoId = parsed.searchParams.get("v") || "";
+      if (!videoId && host === "youtu.be") videoId = parts[0] || "";
+      if (!videoId && ["shorts", "embed", "live"].includes(parts[0])) videoId = parts[1] || "";
+    } else if (label === "Instagram" && ["p", "reel", "tv"].includes(parts[0])) {
+      videoId = parts[1] || "";
+    }
+  }
+
+  if (label === "Video") return "Video campaign";
+  return `${label} video${videoId ? ` ${videoId}` : ""}`;
+}
+
+function ensureCampaignFallbackTitle(value, platformLabel = "", platformVideoId = "") {
+  const titleInput = document.getElementById("campaignTitle");
+  if (!titleInput || titleInput.value.trim()) return "";
+
+  const fallbackTitle = getCampaignUrlFallbackTitle(value, platformLabel, platformVideoId);
+  if (fallbackTitle) titleInput.value = fallbackTitle;
+  return fallbackTitle;
+}
+
 function clearCampaignThumbnailUpload() {
   selectedCampaignThumbnailImageData = "";
 
@@ -839,9 +890,14 @@ async function lookupCampaignMetadata(options = {}) {
     const titleInput = document.getElementById("campaignTitle");
     const thumbnailInput = document.getElementById("campaignThumbnail");
     const preview = data.preview;
+    const fallbackTitle = getCampaignUrlFallbackTitle(
+      preview.videoUrl || draft.videoUrl,
+      preview.platformLabel || "",
+      preview.platformVideoId || ""
+    );
 
-    if (!titleInput.value.trim() && preview.title) {
-      titleInput.value = preview.title;
+    if (!titleInput.value.trim()) {
+      titleInput.value = preview.title || fallbackTitle;
     }
 
     if (!thumbnailInput.value.trim() && preview.thumbnailUrl) {
@@ -856,8 +912,14 @@ async function lookupCampaignMetadata(options = {}) {
     return true;
   } catch (err) {
     if (nonce !== campaignLookupNonce) return false;
+    const fallbackTitle = ensureCampaignFallbackTitle(draft.videoUrl);
     if (!options.silent) {
-      setCampaignMetadataStatus(err.message || "Could not preview this video.", "warn");
+      setCampaignMetadataStatus(
+        fallbackTitle
+          ? "Auto-fill could not load. A fallback title was added; upload a thumbnail if you want one."
+          : "Auto-fill could not load. Add a title or thumbnail manually.",
+        "warn"
+      );
     }
     return false;
   }
@@ -928,6 +990,7 @@ async function createCampaign() {
     button.disabled = true;
     button.innerText = "Checking...";
     await lookupCampaignMetadata({ silent: true });
+    ensureCampaignFallbackTitle(document.getElementById("campaignUrl").value);
     const payload = getCampaignDraft();
 
     button.innerText = "Creating...";

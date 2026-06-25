@@ -1459,6 +1459,17 @@ function normalizeCampaignVideoIdentity(value) {
   };
 }
 
+function getFallbackCampaignTitle(identity = {}) {
+  const platformLabel = getPlatformLabel(identity.platform);
+  const videoId = cleanText(identity.platformVideoId || "", 48);
+
+  if (identity.platform === "other") {
+    return "Video campaign";
+  }
+
+  return `${platformLabel} video${videoId ? ` ${videoId}` : ""}`;
+}
+
 async function getCampaignMetadataPreview(videoUrl) {
   let identity;
   try {
@@ -1487,7 +1498,7 @@ async function getCampaignMetadataPreview(videoUrl) {
     platformVideoId: identity.platformVideoId,
     normalizedVideoKey: identity.normalizedVideoKey,
     videoUrl: identity.videoUrl,
-    title: cleanText(metadata.title, 140),
+    title: cleanText(metadata.title, 140) || getFallbackCampaignTitle(identity),
     thumbnailUrl: normalizeOptionalUrl(metadata.thumbnailUrl, 1200),
     warning
   };
@@ -1670,15 +1681,8 @@ function getCampaignStatusPayload(req, creatorId, fingerprint) {
 }
 
 function createCampaignForCreator(creatorId, payload = {}) {
-  const title = cleanText(payload.title, 140);
   const description = cleanText(payload.description, 600);
   let thumbnailUrl = normalizeOptionalUrl(payload.thumbnailUrl, 1200);
-
-  if (!title || title.length < 2) {
-    const err = new Error("INVALID_CAMPAIGN_TITLE");
-    err.code = "INVALID_CAMPAIGN_TITLE";
-    throw err;
-  }
 
   let identity;
   try {
@@ -1686,6 +1690,14 @@ function createCampaignForCreator(creatorId, payload = {}) {
   } catch (_) {
     const err = new Error("INVALID_VIDEO_URL");
     err.code = "INVALID_VIDEO_URL";
+    throw err;
+  }
+
+  const title = cleanText(payload.title, 140) || getFallbackCampaignTitle(identity);
+
+  if (!title || title.length < 2) {
+    const err = new Error("INVALID_CAMPAIGN_TITLE");
+    err.code = "INVALID_CAMPAIGN_TITLE";
     throw err;
   }
 

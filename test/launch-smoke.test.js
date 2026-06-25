@@ -72,8 +72,11 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(dashboard, /Archive/);
   assert.match(dashboard, /Thumbnail image upload/);
   assert.match(dashboard, /function isLegacyCampaign/);
+  assert.match(dashboard, /function getCampaignUrlFallbackTitle/);
+  assert.match(dashboard, /function ensureCampaignFallbackTitle/);
   assert.match(dashboard, /No active video campaign/);
   assert.match(dashboard, /No video campaigns yet/);
+  assert.match(dashboard, /Auto-fill could not load/);
   assert.match(dashboard, /filter\(campaign => !isLegacyCampaign\(campaign\)\)/);
   assert.doesNotMatch(dashboard, /Create tracked content link/);
   assert.doesNotMatch(dashboard, /contentThumbnailFile/);
@@ -85,6 +88,7 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(server, /\/api\/dashboard\/campaigns\/:campaignId\/archive/);
   assert.match(server, /https:\/\/www\.tiktok\.com\/oembed/);
   assert.match(server, /https:\/\/www\.youtube\.com\/oembed/);
+  assert.match(server, /function getFallbackCampaignTitle/);
   assert.match(server, /function saveThumbnailUpload/);
   assert.match(viewer, /activeCampaign/);
   assert.match(viewer, /campaignRemainingSupports/);
