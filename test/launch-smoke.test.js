@@ -17,6 +17,10 @@ test("production sessions use an environment secret", () => {
 test("production dev reset requires an explicit enable flag", () => {
   assert.match(server, /ENABLE_DEV_RESET/);
   assert.match(server, /requireDevResetAccess/);
+  assert.match(server, /DELETE FROM support_attempts/);
+  assert.match(server, /DELETE FROM campaign_supports/);
+  assert.match(server, /legacy_supports = 0/);
+  assert.match(server, /legacy_earnings = 0/);
 });
 
 test("Render persistent disk is configured", () => {

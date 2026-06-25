@@ -3152,6 +3152,16 @@ app.post("/dev/reset", requireDevResetAccess, enforceRateLimit("dev-reset", 60_0
   supporterStats = {};
   supportRecords = {};
 
+  db.exec(`
+    DELETE FROM support_attempts;
+    DELETE FROM campaign_supports;
+    UPDATE campaigns
+    SET legacy_supports = 0,
+        legacy_earnings = 0,
+        deactivated_at = NULL
+    WHERE normalized_video_key LIKE 'legacy:%';
+  `);
+
   saveData();
 
   res.json({
