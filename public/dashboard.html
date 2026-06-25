@@ -680,7 +680,7 @@ function renderCampaignBreakdown(campaigns = []) {
   const list = document.getElementById("campaignBreakdownList");
   const visible = (Array.isArray(campaigns) ? campaigns : [])
     .filter(campaign => !isLegacyCampaign(campaign))
-    .filter(campaign => campaign.status !== "archived" || Number(campaign.totalSupports || 0) > 0)
+    .filter(campaign => campaign.status !== "archived")
     .sort((a, b) => Number(b.totalSupports || 0) - Number(a.totalSupports || 0));
 
   if (!visible.length) {
