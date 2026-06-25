@@ -668,6 +668,7 @@ function renderCampaigns(campaigns = []) {
         </div>
         <div class="video-actions">
           <a class="mini-btn" href="${escapeHtml(campaign.videoUrl)}" target="_blank" rel="noopener">Open</a>
+          <button class="mini-btn danger" type="button" onclick="removeCampaign('${escapeHtml(campaign.id)}')">Remove</button>
         </div>
       </div>
     `).join("");
@@ -980,6 +981,33 @@ async function createCampaign() {
     button.disabled = false;
     button.innerText = "Add campaign";
   }
+}
+
+async function removeCampaign(campaignId) {
+  const campaign = campaignsCache.find(item => item.id === campaignId);
+  const title = campaign?.title || "this campaign";
+  const confirmed = window.confirm(`Remove "${title}" from supporter choices?`);
+
+  if (!confirmed) return;
+
+  setCampaignError("");
+
+  const res = await fetch(`/api/dashboard/campaigns/${encodeURIComponent(campaignId)}/archive`, {
+    method: "POST"
+  });
+  const data = await res.json();
+
+  if (!data.success) {
+    setCampaignError(data.message || "Could not remove campaign.");
+    return;
+  }
+
+  applyCampaignResponse(data);
+  const statsRes = await fetch("/api/dashboard/stats");
+  const countData = await statsRes.json();
+  renderPlatformStats(countData.platformCounts || {});
+  document.getElementById("totalSupports").innerText = Number(countData.supports || 0);
+  document.getElementById("estimatedEarned").innerText = "$" + Number(countData.earnings || 0).toFixed(2);
 }
 
 document.getElementById("campaignUrl").addEventListener("input", scheduleCampaignMetadataLookup);

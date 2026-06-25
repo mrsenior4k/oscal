@@ -80,6 +80,9 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.doesNotMatch(dashboard, /postCampaignAction/);
   assert.doesNotMatch(dashboard, /function activateCampaign/);
   assert.doesNotMatch(dashboard, /function deactivateCampaign/);
+  assert.match(dashboard, />Remove</);
+  assert.match(dashboard, /function removeCampaign/);
+  assert.match(dashboard, /\/api\/dashboard\/campaigns\/\$\{encodeURIComponent\(campaignId\)\}\/archive/);
   assert.match(dashboard, /Thumbnail image upload/);
   assert.match(dashboard, /function isLegacyCampaign/);
   assert.match(dashboard, /function getCampaignUrlFallbackTitle/);
