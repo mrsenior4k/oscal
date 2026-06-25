@@ -173,6 +173,25 @@
       margin-top: 0;
     }
 
+    .money-field {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .money-field::before {
+      content: "$";
+      position: absolute;
+      left: 14px;
+      color: #dbeafe;
+      font-weight: 950;
+      pointer-events: none;
+    }
+
+    .money-field .form-control {
+      padding-left: 30px;
+    }
+
     .goal-form .btn {
       grid-column: 1 / -1;
       justify-self: start;
@@ -490,7 +509,16 @@
 
         <div class="goal-form">
           <input id="goalTitleInput" class="form-control" placeholder="Goal name">
-          <input id="goalAmountInput" class="form-control" type="number" min="0" step="0.01" placeholder="Amount">
+          <div class="money-field">
+            <input
+              id="goalAmountInput"
+              class="form-control"
+              type="text"
+              inputmode="decimal"
+              placeholder="100.00"
+              onblur="formatGoalAmountField()"
+            >
+          </div>
           <button class="btn" id="saveGoalBtn" type="button" onclick="saveSupportGoal()">Save goal</button>
         </div>
         <div class="form-status" id="goalStatus"></div>
@@ -688,6 +716,27 @@ function normalizeSupportGoal(goal = {}) {
     title: String(goal.title || "Support goal").trim() || "Support goal",
     amount: Number.isFinite(amount) ? Math.max(0, amount) : 0
   };
+}
+
+function parseGoalAmountInput(value) {
+  const cleaned = String(value || "")
+    .replace(/[$,\s]/g, "")
+    .trim();
+
+  if (!cleaned) return 0;
+  if (!/^\d+(\.\d{0,2})?$/.test(cleaned)) return NaN;
+
+  return Number(cleaned);
+}
+
+function formatGoalAmountField() {
+  const input = document.getElementById("goalAmountInput");
+  if (!input) return;
+
+  const amount = parseGoalAmountInput(input.value);
+  if (Number.isFinite(amount) && amount > 0) {
+    input.value = amount.toFixed(2);
+  }
 }
 
 function renderDashboardGoal(goal = {}, earnings = currentDashboardEarnings) {
@@ -1081,30 +1130,45 @@ async function createCampaign() {
 
 async function saveSupportGoal() {
   const button = document.getElementById("saveGoalBtn");
-  const title = document.getElementById("goalTitleInput").value;
-  const amount = document.getElementById("goalAmountInput").value;
+  const title = document.getElementById("goalTitleInput").value.trim();
+  const amount = parseGoalAmountInput(document.getElementById("goalAmountInput").value);
 
   setGoalStatus("");
 
   try {
+    if (!Number.isFinite(amount)) {
+      throw new Error("Enter a goal amount like $100.00.");
+    }
+
     button.disabled = true;
     button.innerText = "Saving...";
 
     const res = await fetch("/api/dashboard/goal", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, amount })
+      credentials: "same-origin",
+      body: JSON.stringify({ title, amount: amount.toFixed(2) })
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({
+      success: false,
+      message: "Could not read the save response. Refresh and sign in again."
+    }));
 
-    if (!data.success) {
+    if (res.status === 401 || data.code === "CREATOR_LOGIN_REQUIRED") {
+      throw new Error("Your dashboard session expired. Refresh and sign in again, then save your goal.");
+    }
+
+    if (!res.ok || !data.success) {
       throw new Error(data.message || "Could not save goal.");
     }
 
     renderDashboardGoal(data.supportGoal, currentDashboardEarnings);
     setGoalStatus("Goal saved.", "success");
   } catch (err) {
-    setGoalStatus(err.message || "Could not save goal.", "warn");
+    const message = err.message === "Load failed"
+      ? "Could not reach the server. Refresh the dashboard and try again."
+      : err.message || "Could not save goal.";
+    setGoalStatus(message, "warn");
   } finally {
     button.disabled = false;
     button.innerText = "Save goal";

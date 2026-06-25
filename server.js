@@ -313,9 +313,23 @@ function mergeCreatorStatRecords(target = {}, source = {}) {
   return merged;
 }
 
+function parseSupportGoalAmount(value) {
+  if (value === null || value === undefined || value === "") return 0;
+  if (typeof value === "number") return value;
+
+  const cleaned = String(value)
+    .replace(/[$,\s]/g, "")
+    .trim();
+
+  if (!cleaned) return 0;
+  if (!/^\d+(\.\d{0,2})?$/.test(cleaned)) return NaN;
+
+  return Number(cleaned);
+}
+
 function normalizeSupportGoal(goal = {}) {
   const title = cleanText(goal.title, 80) || "Support goal";
-  const amount = Number(goal.amount || 0);
+  const amount = parseSupportGoalAmount(goal.amount);
   const safeAmount = Number.isFinite(amount)
     ? Math.min(999999, Math.max(0, amount))
     : 0;
@@ -3001,6 +3015,14 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
 });
 function requireCreatorLogin(req, res, next) {
   if (!req.session.creatorProfile) {
+    if (req.path.startsWith("/api/")) {
+      return res.status(401).json({
+        success: false,
+        code: "CREATOR_LOGIN_REQUIRED",
+        message: "Please sign in again before saving."
+      });
+    }
+
     return res.redirect("/auth/creator");
   }
 
@@ -3324,10 +3346,18 @@ app.post(
   (req, res) => {
     const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
     const creatorRecord = getOrCreateCreatorStats(creator);
+    const amount = parseSupportGoalAmount(req.body.amount);
+
+    if (!Number.isFinite(amount)) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter a goal amount like $100.00."
+      });
+    }
 
     creatorRecord.supportGoal = normalizeSupportGoal({
       title: req.body.title,
-      amount: req.body.amount
+      amount
     });
     saveData();
 

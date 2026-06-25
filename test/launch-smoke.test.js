@@ -72,6 +72,10 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(dashboard, /Support goal/);
   assert.match(dashboard, /Save goal/);
   assert.match(dashboard, /function saveSupportGoal/);
+  assert.match(dashboard, /function parseGoalAmountInput/);
+  assert.match(dashboard, /class="money-field"/);
+  assert.match(dashboard, /placeholder="100\.00"/);
+  assert.match(dashboard, /credentials:\s*"same-origin"/);
   assert.match(dashboard, /\/api\/dashboard\/goal/);
   assert.doesNotMatch(dashboard, /Estimated earned/);
   assert.match(dashboard, /Campaign videos/);
@@ -105,6 +109,8 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(server, /app\.get\("\/api\/dashboard\/campaigns"/);
   assert.match(server, /\/api\/dashboard\/goal/);
   assert.match(server, /function normalizeSupportGoal/);
+  assert.match(server, /function parseSupportGoalAmount/);
+  assert.match(server, /CREATOR_LOGIN_REQUIRED/);
   assert.match(server, /\/api\/dashboard\/campaigns\/metadata/);
   assert.match(server, /\/api\/dashboard\/campaigns\/:campaignId\/activate/);
   assert.match(server, /\/api\/dashboard\/campaigns\/:campaignId\/deactivate/);
