@@ -177,6 +177,9 @@ test("viewer support completion is assigned automatically to the active campaign
   assert.match(viewer, /campaignId:\s*getSelectedCampaignId\(\)/);
   assert.match(viewer, /supportAttemptId:\s*activeSupportAttemptId/);
   assert.match(viewer, /campaignRemainingSupports <= 0/);
+  assert.match(viewer, /function snapBackToWellScene/);
+  assert.match(viewer, /scene\.scrollIntoView\(\{/);
+  assert.match(viewer, /setTimeout\(\(\) => triggerWellGlow\(4500\), wellGlowDelay\)/);
   assert.doesNotMatch(viewer, /submitVideoAttribution/);
   assert.match(server, /getSupportCampaignForCreator\(creatorKey, campaignId\)/);
   assert.match(server, /getCampaignStatusPayload\(\s*req,\s*creatorKey,\s*fingerprint,\s*campaignId,\s*deviceFamily\s*\)/);

@@ -5550,6 +5550,20 @@ body: JSON.stringify({
       if (signNum) signNum.innerText = count;
     }
 
+    function snapBackToWellScene() {
+      const scene = document.getElementById("wellScene");
+      if (!scene) return 0;
+
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      scene.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "center",
+        inline: "nearest"
+      });
+
+      return reduceMotion ? 0 : 450;
+    }
+
     async function readJsonResponse(response, label) {
       const rawText = await response.text();
 
@@ -5571,6 +5585,7 @@ body: JSON.stringify({
       const earnings = Number(
         completeData.earnings ?? supports * 0.05
       );
+      const wellGlowDelay = snapBackToWellScene();
       activeCampaign = completeData.activeCampaign || activeCampaign;
       campaignCompletedSupports = Number(completeData.completedSupports || campaignCompletedSupports);
       campaignRemainingSupports = Number(completeData.remainingSupports || campaignRemainingSupports);
@@ -5603,7 +5618,7 @@ body: JSON.stringify({
       updateCampaignSupportUi({ skipStatus: true });
 
       checkSupportStatus();
-      triggerWellGlow(4500);
+      setTimeout(() => triggerWellGlow(4500), wellGlowDelay);
       showCountdown(30);
     }
 
