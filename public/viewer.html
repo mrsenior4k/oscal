@@ -2922,7 +2922,6 @@
 <div id="campaignChoiceModal" class="wish-overlay hidden" aria-hidden="true">
   <div class="attribution-card">
     <h3>Which video made you want to support?</h3>
-    <p>This helps the creator see which posts are connecting with viewers.</p>
     <div class="attribution-list" id="campaignChoiceList"></div>
     <div class="attribution-actions">
       <button type="button" onclick="skipCampaignChoice()">Skip</button>
@@ -3382,7 +3381,7 @@ function showCampaignChoicePrompt() {
       ${renderCampaignChoiceThumb(campaign)}
       <span>
         <strong>${escapeHtml(campaign.title || "Untitled campaign")}</strong>
-        <span>${escapeHtml(getCampaignPlatformLabel(campaign.platform))} • ${Number(campaign.totalSupports || 0)} supports</span>
+        <span>${escapeHtml(getCampaignPlatformLabel(campaign.platform))}</span>
       </span>
     </button>
   `).join("");
