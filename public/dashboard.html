@@ -634,7 +634,6 @@ function formatCampaignDate(value) {
 
 function campaignMetaLine(campaign) {
   return [
-    PLATFORM_LABELS[campaign.platform] || "Video",
     `${Number(campaign.totalSupports || 0)} supports`,
     `${formatMoney(campaign.totalEarnings)} earned`
   ].join(" • ");

@@ -87,6 +87,7 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(dashboard, /function isLegacyCampaign/);
   assert.match(dashboard, /function getCampaignUrlFallbackTitle/);
   assert.match(dashboard, /function ensureCampaignFallbackTitle/);
+  assert.doesNotMatch(dashboard, /function campaignMetaLine\(campaign\) \{\s*return \[\s*PLATFORM_LABELS\[campaign\.platform\]/);
   assert.match(dashboard, /No video campaigns yet/);
   assert.match(dashboard, /Auto-fill could not load/);
   assert.match(dashboard, /filter\(campaign => !isLegacyCampaign\(campaign\)\)/);
