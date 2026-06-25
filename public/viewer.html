@@ -3117,6 +3117,7 @@ let usingCreatorIdentity = false;
 let loggedInCreatorProfile = null;
 let creatorPageProfile = null;
 let isCreatorViewingOwnIsland = false;
+let serverIdentifiedCreatorOwner = false;
 let supporterLifetimeSupports = 0;
 let supporterCreatorSupports = 0;
 let creatorTotalSupports = 0;
@@ -3367,7 +3368,9 @@ function updateCampaignSupportUi(options = {}) {
   }
 
   if (!options.skipStatus) {
-    if (!hasCampaign) {
+    if (ownerBlocked) {
+      setStatus("You cannot support your own island.", "warning");
+    } else if (!hasCampaign) {
       setStatus(
         `${getCreatorDisplayName()} does not currently have an active support island. Check back when they activate their next video.`,
         "warning"
@@ -3524,7 +3527,7 @@ function loggedInCreatorOwnsIsland() {
 }
 
 function updateCreatorOwnerMode() {
-  isCreatorViewingOwnIsland = loggedInCreatorOwnsIsland();
+  isCreatorViewingOwnIsland = serverIdentifiedCreatorOwner || loggedInCreatorOwnsIsland();
   updateCampaignSupportUi({ skipStatus: true });
 }
 
@@ -5375,12 +5378,15 @@ body: JSON.stringify({
   fingerprint,
   timeZone: userTimeZone,
   anonId,
-  creator
+  creator,
+  deviceFamily
 })
   });
 
   const data = await res.json();
   const creatorIdentity = await getLoggedInCreatorIdentity();
+  serverIdentifiedCreatorOwner = Boolean(data.isCreatorOwner);
+  updateCreatorOwnerMode();
 
   usingCreatorIdentity = Boolean(creatorIdentity?.name || creatorIdentity?.pfp);
   serverHasSupporterProfile = usingCreatorIdentity || Boolean(data.hasProfile);
@@ -5415,7 +5421,7 @@ body: JSON.stringify({
     cooldownUntil = Date.now() + data.wait * 1000;
     showCountdown(data.wait);
   }
-  if (!serverHasSupporterProfile && data.lifetimeSupports >= 3) {
+  if (!isCreatorViewingOwnIsland && !serverHasSupporterProfile && data.lifetimeSupports >= 3) {
   document.getElementById("identityPrompt").classList.remove("hidden");
 } else {
   document.getElementById("identityPrompt").classList.add("hidden");

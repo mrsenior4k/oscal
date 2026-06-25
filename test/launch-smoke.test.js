@@ -30,6 +30,10 @@ test("owner-device self-support guard is wired through viewer and dashboard", ()
   assert.match(server, /isKnownCreatorOwnerDevice/);
   assert.doesNotMatch(server, /return Boolean\(record\.ipHashes\[getOwnerIpHash\(req\)\]\)/);
   assert.match(viewer, /deviceFamily/);
+  assert.match(server, /isCreatorOwner:\s*isCreatorOwnerRequest/);
+  assert.match(viewer, /serverIdentifiedCreatorOwner/);
+  assert.match(viewer, /You cannot support your own island/);
+  assert.match(viewer, /deviceFamily\s*\}/);
   assert.match(viewer, /credentials:\s*"same-origin"/);
   assert.match(dashboard, /getDashboardDeviceFamily/);
 });

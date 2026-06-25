@@ -3537,7 +3537,7 @@ app.post("/support/attribute-video", enforceRateLimit("support-attribute-video",
 
 // ---------- Creator page route ----------
 app.post("/support/status", enforceRateLimit("support-status", 60_000, 60), (req, res) => {
-  const { fingerprint, timeZone, creator } = req.body;
+  const { fingerprint, timeZone, creator, deviceFamily = "" } = req.body;
 
   if (!fingerprint || !timeZone) {
     return res.json({ success: false });
@@ -3552,6 +3552,9 @@ let creatorSupports = 0;
 const creatorKey = getCanonicalCreatorKey(creator, req);
 const { stats: creatorRecord } = getCreatorStatsRecord(creatorKey, req);
 const campaignStatus = getCampaignStatusPayload(req, creatorKey, fingerprint);
+const isCreatorOwnerRequest =
+  isLoggedInCreatorForSlug(req, creator) ||
+  isKnownCreatorOwnerDevice(req, creator, deviceFamily);
 
 if (creatorRecord?.recentSupports) {
   creatorRecord.recentSupports.forEach(item => {
@@ -3575,6 +3578,7 @@ const equippedBadge = getEquippedSupporterBadge(anonId, lifetimeSupports);
       success: true,
       wait: 0,
       ...campaignStatus,
+      isCreatorOwner: isCreatorOwnerRequest,
       lifetimeSupports,
       creatorSupports,
       hasProfile,
@@ -3599,6 +3603,7 @@ const equippedBadge = getEquippedSupporterBadge(anonId, lifetimeSupports);
     success: true,
     wait,
     ...nextCampaignStatus,
+    isCreatorOwner: isCreatorOwnerRequest,
     lifetimeSupports,
     creatorSupports,
     hasProfile,
