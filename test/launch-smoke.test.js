@@ -44,6 +44,7 @@ test("owner-device self-support guard is wired through viewer and dashboard", ()
 
 test("launch support limits and owner self-support block are restored", () => {
   assert.match(server, /const MAX_CAMPAIGN_SUPPORTS_PER_VIEWER = 3/);
+  assert.match(server, /const CAMPAIGN_SUPPORT_WINDOW_MS = 24 \* 60 \* 60 \* 1000/);
   assert.doesNotMatch(server, /const MAX_SUPPORTS_PER_DAY/);
   assert.match(viewer, /const selfSupportTestMode = false/);
   assert.match(viewer, /const ownerSelfSupportTestMode = false/);
@@ -131,6 +132,7 @@ test("campaign tables and active campaign uniqueness are migrated in SQLite", ()
   assert.match(server, /CREATE UNIQUE INDEX IF NOT EXISTS idx_campaigns_one_active/);
   assert.match(server, /WHERE status = 'active'/);
   assert.match(server, /CREATE TABLE IF NOT EXISTS campaign_supports/);
+  assert.match(server, /idx_campaign_supports_viewer_time/);
   assert.match(server, /CREATE TABLE IF NOT EXISTS support_attempts/);
   assert.match(server, /UNIQUE \(creator_id, normalized_video_key\)/);
   assert.match(server, /attempt_id TEXT UNIQUE/);
@@ -145,6 +147,7 @@ test("campaign tables and active campaign uniqueness are migrated in SQLite", ()
   assert.match(server, /function getCampaignViewerKeys/);
   assert.match(server, /getLegacyCampaignViewerKey\(req, deviceFamily\)/);
   assert.match(server, /viewer_key IN \(\$\{placeholders\}\)/);
+  assert.match(server, /completed_at >= \?/);
   assert.match(server, /normalized_video_key NOT LIKE 'legacy:%'/);
   assert.match(server, /ensureLegacyCampaigns\(\)/);
 });
@@ -169,6 +172,7 @@ test("campaign duplicate, activation, and support attempt protections are enforc
 test("viewer support completion is assigned automatically to the active campaign", () => {
   assert.match(viewer, /No support video yet/);
   assert.match(viewer, /You fully supported this video/);
+  assert.match(viewer, /wait 24 hours to support this one again/);
   assert.match(viewer, /campaignId:\s*activeCampaign\.id/);
   assert.match(viewer, /campaignId:\s*getSelectedCampaignId\(\)/);
   assert.match(viewer, /supportAttemptId:\s*activeSupportAttemptId/);

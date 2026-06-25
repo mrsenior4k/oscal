@@ -558,6 +558,8 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_campaign_supports_viewer
     ON campaign_supports (campaign_id, viewer_key);
+  CREATE INDEX IF NOT EXISTS idx_campaign_supports_viewer_time
+    ON campaign_supports (campaign_id, viewer_key, completed_at);
   CREATE INDEX IF NOT EXISTS idx_campaign_supports_creator_time
     ON campaign_supports (creator_id, completed_at);
   CREATE TABLE IF NOT EXISTS support_attempts (
@@ -1026,6 +1028,7 @@ canonicalizeStoredCreatorStats();
 
 // ---------- Config ----------
 const MAX_CAMPAIGN_SUPPORTS_PER_VIEWER = 3;
+const CAMPAIGN_SUPPORT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const COOLDOWN_MS = 30_000; // 30 seconds
 const REWARD_PER_SUPPORT = 0.05;
 const MIN_AD_WATCH_MS = 14_000; // basic backend validation
@@ -1720,11 +1723,14 @@ function getCampaignSupportCount(campaignId, viewerKeys) {
   if (!uniqueKeys.length) return 0;
 
   const placeholders = uniqueKeys.map(() => "?").join(", ");
+  const supportWindowStart = new Date(Date.now() - CAMPAIGN_SUPPORT_WINDOW_MS).toISOString();
   const row = db.prepare(`
     SELECT COUNT(*) AS count
     FROM campaign_supports
-    WHERE campaign_id = ? AND viewer_key IN (${placeholders})
-  `).get(campaignId, ...uniqueKeys);
+    WHERE campaign_id = ?
+      AND completed_at >= ?
+      AND viewer_key IN (${placeholders})
+  `).get(campaignId, supportWindowStart, ...uniqueKeys);
 
   return Number(row?.count || 0);
 }
