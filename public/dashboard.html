@@ -569,7 +569,7 @@
 
       <div class="card">
         <div class="label">Your platform links</div>
-        <p class="sub">Place each link in the matching platform’s bio. Oscal will automatically record which platform a supporter came from.</p>
+        <p class="sub">Use your permanent Oscal link anywhere you send supporters.</p>
 
         <div class="platform-links" id="platformLinks">
           <p class="empty">Loading platform links...</p>
@@ -579,40 +579,39 @@
 
     <section class="main dashboard-row">
       <div class="card">
-        <div class="label">Eligible videos</div>
-        <p class="sub">Paste a TikTok, Instagram, or YouTube URL. Oscal will try to fill the title and thumbnail automatically; use the fallback fields only if the platform blocks it.</p>
+        <div class="label">Support island campaign</div>
+        <p class="sub">Create video campaigns and choose the one your permanent Oscal link supports right now.</p>
 
-        <select id="eligiblePlatform" class="form-control">
-          <option value="tiktok">TikTok</option>
-          <option value="instagram">Instagram</option>
-          <option value="youtube">YouTube</option>
-        </select>
-
-        <input id="eligibleUrl" class="form-control" placeholder="Public video or post URL">
-        <div class="form-status" id="metadataStatus"></div>
-        <input id="eligibleTitle" class="form-control" placeholder="Auto-filled title or short label">
-        <input id="eligibleThumbnail" class="form-control" placeholder="Auto-filled thumbnail URL">
-        <label class="field-label" for="eligibleThumbnailFile">Thumbnail image upload</label>
-        <p class="field-hint">Optional fallback if the platform will not provide a thumbnail.</p>
-        <div class="thumbnail-upload-row">
-          <input id="eligibleThumbnailFile" class="form-control" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
-          <img id="eligibleThumbnailPreview" class="thumbnail-preview" alt="">
+        <div class="video-list" id="activeCampaignCard">
+          <p class="empty">No active campaign yet.</p>
         </div>
 
-        <button class="btn" id="addEligibleVideoBtn" style="margin-top:12px;" onclick="addEligibleVideo()">
-          Add video
+        <input id="campaignTitle" class="form-control" placeholder="Campaign title">
+        <input id="campaignUrl" class="form-control" placeholder="Video URL">
+        <div class="form-status" id="campaignMetadataStatus"></div>
+        <input id="campaignThumbnail" class="form-control" placeholder="Optional thumbnail URL">
+        <label class="field-label" for="campaignThumbnailFile">Thumbnail image upload</label>
+        <p class="field-hint">Optional fallback if Oscal cannot auto-fill a thumbnail.</p>
+        <div class="thumbnail-upload-row">
+          <input id="campaignThumbnailFile" class="form-control" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+          <img id="campaignThumbnailPreview" class="thumbnail-preview" alt="">
+        </div>
+        <textarea id="campaignDescription" class="form-control" rows="3" placeholder="Optional description"></textarea>
+
+        <button class="btn" id="createCampaignBtn" style="margin-top:12px;" onclick="createCampaign()">
+          Create campaign
         </button>
 
-        <div class="form-error" id="eligibleVideoError"></div>
-        <div class="video-list" id="eligibleVideosList">
-          <p class="empty">No eligible videos yet.</p>
+        <div class="form-error" id="campaignError"></div>
+        <div class="video-list" id="campaignsList">
+          <p class="empty">No campaigns yet.</p>
         </div>
       </div>
 
       <div class="card">
-        <div class="label">Most-supported videos</div>
-        <div class="video-list" id="mostSupportedVideosList">
-          <p class="empty">No video attribution yet.</p>
+        <div class="label">Campaign breakdown</div>
+        <div class="video-list" id="campaignBreakdownList">
+          <p class="empty">No campaign support yet.</p>
         </div>
       </div>
     </section>
@@ -624,18 +623,20 @@
   </main>
 
   <script>
-    let publicLink = "";
+let publicLink = "";
 let currentProfile = null;
-let creatorVideosCache = [];
-let metadataLookupTimer = null;
-let metadataLookupNonce = 0;
-let selectedThumbnailImageData = "";
+let campaignsCache = [];
+let activeCampaignCache = null;
+let campaignLookupTimer = null;
+let campaignLookupNonce = 0;
+let selectedCampaignThumbnailImageData = "";
 
 const PLATFORM_LABELS = {
   tiktok: "TikTok",
   instagram: "Instagram",
   youtube: "YouTube",
-  direct: "Direct"
+  direct: "Direct",
+  other: "Other"
 };
 
 function getDashboardDeviceFamily() {
@@ -693,11 +694,6 @@ function renderPlatformPill(platform) {
   return `<span class="platform-pill">${escapeHtml(PLATFORM_LABELS[platform] || "Direct")}</span>`;
 }
 
-function setEligibleVideoError(message = "") {
-  const errorEl = document.getElementById("eligibleVideoError");
-  if (errorEl) errorEl.innerText = message;
-}
-
 function formatSupportTimestamp(value) {
   const date = new Date(Number(value || 0));
   if (Number.isNaN(date.getTime())) return "";
@@ -736,17 +732,13 @@ function getSupportIslandLink() {
 
   return (
     window.location.origin +
-    "/island/" +
-    encodeURIComponent(currentProfile.slug) +
-    "?view=supporter"
+    "/" +
+    encodeURIComponent(getPublicCreatorSlug())
   );
 }
 
 function getPlatformLink(platform) {
-  const slug = getPublicCreatorSlug();
-  if (!slug) return "";
-
-  return `${window.location.origin}/${encodeURIComponent(slug)}/${platform}`;
+  return getSupportIslandLink();
 }
 
 function copyText(text, button, fallbackText = "Copy") {
@@ -800,91 +792,142 @@ function renderPlatformStats(counts = {}) {
   `).join("");
 }
 
-function renderVideoThumb(video) {
-  if (video.thumbnailUrl) {
-    return `<img class="video-thumb" src="${escapeHtml(video.thumbnailUrl)}" alt="">`;
+function renderCampaignThumb(campaign) {
+  if (campaign.thumbnailUrl) {
+    return `<img class="video-thumb" src="${escapeHtml(campaign.thumbnailUrl)}" alt="">`;
   }
 
-  return `<div class="video-thumb-placeholder">${escapeHtml(PLATFORM_LABELS[video.platform] || "Post")}</div>`;
+  return `<div class="video-thumb-placeholder">${escapeHtml(PLATFORM_LABELS[campaign.platform] || "Video")}</div>`;
 }
 
-function renderEligibleVideos(videos = []) {
-  creatorVideosCache = Array.isArray(videos) ? videos : [];
-  const list = document.getElementById("eligibleVideosList");
+function formatMoney(value) {
+  return `$${Number(value || 0).toFixed(2)}`;
+}
 
-  if (!creatorVideosCache.length) {
-    list.innerHTML = `<p class="empty">No eligible videos yet.</p>`;
+function formatCampaignDate(value) {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not set";
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function campaignMetaLine(campaign) {
+  return [
+    PLATFORM_LABELS[campaign.platform] || "Video",
+    campaign.status,
+    `${Number(campaign.totalSupports || 0)} supports`,
+    `${formatMoney(campaign.totalEarnings)} earned`
+  ].join(" • ");
+}
+
+function renderActiveCampaign(campaign) {
+  const card = document.getElementById("activeCampaignCard");
+  activeCampaignCache = campaign || null;
+
+  if (!campaign) {
+    card.innerHTML = `<p class="empty">No active campaign. Create or activate one before sharing your island.</p>`;
     return;
   }
 
-  list.innerHTML = creatorVideosCache.map(video => `
+  card.innerHTML = `
     <div class="video-item">
-      ${renderVideoThumb(video)}
+      ${renderCampaignThumb(campaign)}
       <div>
-        <strong>${escapeHtml(video.title || "Untitled video")}</strong>
-        <span>${escapeHtml(PLATFORM_LABELS[video.platform] || video.platform)} • ${video.isEligible === false ? "Ineligible" : "Eligible"} • ${formatVideoDate(video.publishedAt || video.createdAt)}</span>
-        ${video.contentUrl ? `<span>${escapeHtml(video.contentUrl)}</span>` : ""}
+        <strong>${escapeHtml(campaign.title)}</strong>
+        <span>Active support island • ${Number(campaign.totalSupports || 0)} supports • ${formatMoney(campaign.totalEarnings)} earned</span>
+        <span>Activated ${escapeHtml(formatCampaignDate(campaign.activatedAt))}</span>
       </div>
       <div class="video-actions">
-        <button class="mini-btn danger" type="button" onclick="deleteEligibleVideo('${escapeHtml(video.id)}')">Delete</button>
+        <a class="mini-btn" href="${escapeHtml(campaign.videoUrl)}" target="_blank" rel="noopener">View video</a>
+        <button class="mini-btn danger" type="button" onclick="deactivateCampaign('${escapeHtml(campaign.id)}')">Deactivate</button>
       </div>
+    </div>
+  `;
+}
+
+function renderCampaigns(campaigns = []) {
+  campaignsCache = Array.isArray(campaigns) ? campaigns : [];
+  const list = document.getElementById("campaignsList");
+
+  if (!campaignsCache.length) {
+    list.innerHTML = `<p class="empty">No campaigns yet.</p>`;
+    renderCampaignBreakdown([]);
+    return;
+  }
+
+  list.innerHTML = campaignsCache.map(campaign => {
+    const canActivate = campaign.status !== "active" && campaign.status !== "archived";
+    const canDeactivate = campaign.status === "active";
+
+    return `
+      <div class="video-item">
+        ${renderCampaignThumb(campaign)}
+        <div>
+          <strong>${escapeHtml(campaign.title || "Untitled campaign")}</strong>
+          <span>${escapeHtml(campaignMetaLine(campaign))}</span>
+          <span>Created ${escapeHtml(formatCampaignDate(campaign.createdAt))}</span>
+          ${campaign.videoUrl ? `<span>${escapeHtml(campaign.videoUrl)}</span>` : ""}
+        </div>
+        <div class="video-actions">
+          <a class="mini-btn" href="${escapeHtml(campaign.videoUrl)}" target="_blank" rel="noopener">Open</a>
+          ${canActivate ? `<button class="mini-btn" type="button" onclick="activateCampaign('${escapeHtml(campaign.id)}')">Make active</button>` : ""}
+          ${canDeactivate ? `<button class="mini-btn danger" type="button" onclick="deactivateCampaign('${escapeHtml(campaign.id)}')">Deactivate</button>` : ""}
+          <button class="mini-btn danger" type="button" onclick="archiveCampaign('${escapeHtml(campaign.id)}')">Archive</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  renderCampaignBreakdown(campaignsCache);
+}
+
+function renderCampaignBreakdown(campaigns = []) {
+  const list = document.getElementById("campaignBreakdownList");
+  const visible = (Array.isArray(campaigns) ? campaigns : [])
+    .filter(campaign => campaign.status !== "archived" || Number(campaign.totalSupports || 0) > 0)
+    .sort((a, b) => Number(b.totalSupports || 0) - Number(a.totalSupports || 0));
+
+  if (!visible.length) {
+    list.innerHTML = `<p class="empty">No campaign support yet.</p>`;
+    return;
+  }
+
+  list.innerHTML = visible.map(campaign => `
+    <div class="platform-stat">
+      <div>
+        <strong>${escapeHtml(campaign.title || "Untitled campaign")}</strong>
+        <span>${escapeHtml(campaign.status)} • ${formatMoney(campaign.totalEarnings)} earned</span>
+      </div>
+      <strong>${Number(campaign.totalSupports || 0)}</strong>
     </div>
   `).join("");
 }
 
-function renderMostSupportedVideos(videos = [], summary = {}) {
-  const list = document.getElementById("mostSupportedVideosList");
-  const rows = [];
-
-  (Array.isArray(videos) ? videos : []).forEach(video => {
-    rows.push(`
-      <div class="video-item">
-        ${renderVideoThumb(video)}
-        <div>
-          <strong>${escapeHtml(video.title || "Untitled video")}</strong>
-          <span>${escapeHtml(PLATFORM_LABELS[video.platform] || video.platform)} • ${Number(video.attributedSupports || 0)} attributed supports</span>
-        </div>
-        <strong>${Number(video.attributedSupports || 0)}</strong>
-      </div>
-    `);
-  });
-
-  rows.push(`
-    <div class="platform-stat">
-      <div>
-        <strong>Just supporting the creator</strong>
-        <span>Viewer explicitly chose creator-only</span>
-      </div>
-      <strong>${Number(summary.creatorOnly || 0)}</strong>
-    </div>
-  `);
-
-  rows.push(`
-    <div class="platform-stat">
-      <div>
-        <strong>No video selected</strong>
-        <span>Skipped, closed, or did not answer</span>
-      </div>
-      <strong>${Number(summary.noVideoSelected || 0)}</strong>
-    </div>
-  `);
-
-  list.innerHTML = rows.join("");
+function setCampaignError(message = "") {
+  const errorEl = document.getElementById("campaignError");
+  if (errorEl) errorEl.innerText = message;
 }
 
-function setMetadataStatus(message = "", tone = "") {
-  const status = document.getElementById("metadataStatus");
+function setCampaignMetadataStatus(message = "", tone = "") {
+  const status = document.getElementById("campaignMetadataStatus");
   if (!status) return;
 
   status.textContent = message;
   status.className = `form-status${tone ? ` ${tone}` : ""}`;
 }
 
-function clearThumbnailUpload() {
-  selectedThumbnailImageData = "";
+function clearCampaignThumbnailUpload() {
+  selectedCampaignThumbnailImageData = "";
 
-  const fileInput = document.getElementById("eligibleThumbnailFile");
-  const preview = document.getElementById("eligibleThumbnailPreview");
+  const fileInput = document.getElementById("campaignThumbnailFile");
+  const preview = document.getElementById("campaignThumbnailPreview");
 
   if (fileInput) fileInput.value = "";
   if (preview) {
@@ -893,11 +936,11 @@ function clearThumbnailUpload() {
   }
 }
 
-function handleThumbnailUpload(event) {
+function handleCampaignThumbnailUpload(event) {
   const file = event.target.files && event.target.files[0];
-  const preview = document.getElementById("eligibleThumbnailPreview");
+  const preview = document.getElementById("campaignThumbnailPreview");
 
-  selectedThumbnailImageData = "";
+  selectedCampaignThumbnailImageData = "";
 
   if (!file) {
     if (preview) {
@@ -908,111 +951,111 @@ function handleThumbnailUpload(event) {
   }
 
   if (!/^image\/(png|jpe?g|webp|gif)$/i.test(file.type)) {
-    setEligibleVideoError("Upload a PNG, JPG, WebP, or GIF thumbnail image.");
-    clearThumbnailUpload();
+    setCampaignError("Upload a PNG, JPG, WebP, or GIF thumbnail image.");
+    clearCampaignThumbnailUpload();
     return;
   }
 
   if (file.size > 3 * 1024 * 1024) {
-    setEligibleVideoError("Thumbnail image must be smaller than 3 MB.");
-    clearThumbnailUpload();
+    setCampaignError("Thumbnail image must be smaller than 3 MB.");
+    clearCampaignThumbnailUpload();
     return;
   }
 
   const reader = new FileReader();
   reader.onload = () => {
-    selectedThumbnailImageData = String(reader.result || "");
-    if (preview && selectedThumbnailImageData) {
-      preview.src = selectedThumbnailImageData;
+    selectedCampaignThumbnailImageData = String(reader.result || "");
+    if (preview && selectedCampaignThumbnailImageData) {
+      preview.src = selectedCampaignThumbnailImageData;
       preview.classList.add("is-visible");
     }
-    setEligibleVideoError("");
+    setCampaignError("");
   };
   reader.onerror = () => {
-    setEligibleVideoError("Could not read that thumbnail image.");
-    clearThumbnailUpload();
+    setCampaignError("Could not read that thumbnail image.");
+    clearCampaignThumbnailUpload();
   };
   reader.readAsDataURL(file);
 }
 
-function getEligibleVideoDraft() {
+function getCampaignDraft() {
   return {
-    platform: document.getElementById("eligiblePlatform").value,
-    contentUrl: document.getElementById("eligibleUrl").value.trim(),
-    title: document.getElementById("eligibleTitle").value.trim(),
-    thumbnailUrl: document.getElementById("eligibleThumbnail").value.trim(),
-    thumbnailImageData: selectedThumbnailImageData
+    title: document.getElementById("campaignTitle").value.trim(),
+    videoUrl: document.getElementById("campaignUrl").value.trim(),
+    thumbnailUrl: document.getElementById("campaignThumbnail").value.trim(),
+    thumbnailImageData: selectedCampaignThumbnailImageData,
+    description: document.getElementById("campaignDescription").value.trim()
   };
 }
 
-async function lookupEligibleVideoMetadata(options = {}) {
-  const draft = getEligibleVideoDraft();
-  const shouldLookup = draft.contentUrl.length > 12;
-
-  if (!shouldLookup) {
-    if (!options.silent) setMetadataStatus("");
+async function lookupCampaignMetadata(options = {}) {
+  const draft = getCampaignDraft();
+  if (draft.videoUrl.length < 12) {
+    if (!options.silent) setCampaignMetadataStatus("");
     return false;
   }
 
-  const nonce = ++metadataLookupNonce;
-  if (!options.silent) setMetadataStatus("Looking up post details...");
+  const nonce = ++campaignLookupNonce;
+  if (!options.silent) setCampaignMetadataStatus("Looking up video details...");
 
   try {
-    const res = await fetch("/api/dashboard/videos/metadata", {
+    const res = await fetch("/api/dashboard/campaigns/metadata", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        platform: draft.platform,
-        contentUrl: draft.contentUrl
-      })
+      body: JSON.stringify({ videoUrl: draft.videoUrl })
     });
     const data = await res.json();
 
-    if (nonce !== metadataLookupNonce) return false;
-
-    if (!data.success || !data.metadata) {
-      throw new Error(data.message || "Could not auto-fill this post.");
+    if (nonce !== campaignLookupNonce) return false;
+    if (!data.success || !data.preview) {
+      throw new Error(data.message || "Could not preview this video.");
     }
 
-    const titleInput = document.getElementById("eligibleTitle");
-    const thumbnailInput = document.getElementById("eligibleThumbnail");
-    const metadata = data.metadata;
+    const titleInput = document.getElementById("campaignTitle");
+    const thumbnailInput = document.getElementById("campaignThumbnail");
+    const preview = data.preview;
 
-    if (!titleInput.value.trim() && metadata.title) {
-      titleInput.value = metadata.title;
+    if (!titleInput.value.trim() && preview.title) {
+      titleInput.value = preview.title;
     }
 
-    if (!thumbnailInput.value.trim() && metadata.thumbnailUrl) {
-      thumbnailInput.value = metadata.thumbnailUrl;
+    if (!thumbnailInput.value.trim() && preview.thumbnailUrl) {
+      thumbnailInput.value = preview.thumbnailUrl;
     }
 
-    if (!options.silent) {
-      setMetadataStatus("Post details filled automatically.", "success");
-    }
-
+    const idText = preview.platformVideoId ? ` • Video ID: ${preview.platformVideoId}` : "";
+    setCampaignMetadataStatus(
+      `Platform: ${preview.platformLabel || "Other"}${idText}${preview.warning ? ` • ${preview.warning}` : ""}`,
+      preview.warning ? "warn" : "success"
+    );
     return true;
   } catch (err) {
-    if (nonce !== metadataLookupNonce) return false;
-
+    if (nonce !== campaignLookupNonce) return false;
     if (!options.silent) {
-      setMetadataStatus(err.message || "Could not auto-fill this post. Add the title manually.", "warn");
+      setCampaignMetadataStatus(err.message || "Could not preview this video.", "warn");
     }
-
     return false;
   }
 }
 
-function scheduleEligibleVideoMetadataLookup() {
-  clearTimeout(metadataLookupTimer);
-  metadataLookupTimer = setTimeout(() => {
-    lookupEligibleVideoMetadata();
+function scheduleCampaignMetadataLookup() {
+  clearTimeout(campaignLookupTimer);
+  campaignLookupTimer = setTimeout(() => {
+    lookupCampaignMetadata();
   }, 650);
 }
 
-async function refreshEligibleVideos() {
-  const res = await fetch("/api/dashboard/videos");
+function applyCampaignResponse(data) {
+  if (!data?.success) return;
+
+  if (Array.isArray(data.campaigns)) renderCampaigns(data.campaigns);
+  if ("activeCampaign" in data) renderActiveCampaign(data.activeCampaign);
+}
+
+async function refreshCampaigns() {
+  const res = await fetch("/api/dashboard/campaigns");
   const data = await res.json();
-  renderEligibleVideos(data.videos || []);
+  applyCampaignResponse(data);
 }
 
     async function loadDashboard() {
@@ -1044,13 +1087,16 @@ async function refreshEligibleVideos() {
   document.getElementById("totalSupports").innerText = supports;
   document.getElementById("estimatedEarned").innerText = "$" + earnings.toFixed(2);
   renderPlatformStats(countData.platformCounts || {});
-  renderMostSupportedVideos(countData.mostSupportedVideos || [], countData.attributionSummary || {});
-  renderEligibleVideos(countData.creatorVideos || []);
+  renderActiveCampaign(countData.activeCampaign || null);
+  renderCampaigns(countData.campaigns || []);
 
   if (countData.recentSupports && countData.recentSupports.length > 0) {
     document.getElementById("recentFeed").innerHTML =
       countData.recentSupports.map(item => {
         const platform = item.sourcePlatform || "direct";
+        const supportCopy = item.campaignTitle
+          ? `Supported ${item.campaignTitle}`
+          : item.emoji ? item.emoji : "Support echoed into the well";
 
         return `
         <div class="feed-item">
@@ -1060,7 +1106,7 @@ async function refreshEligibleVideos() {
               ${renderPlatformPill(platform)}
               ${renderDashboardBadges(item.badges, item.equippedBadge)}
             </div>
-            <span>${escapeHtml(item.emoji ? item.emoji : "Support echoed into the well")}</span>
+            <span>${escapeHtml(supportCopy)}</span>
           </div>
 
           <div class="feed-time">${formatSupportTimestamp(item.time)}</div>
@@ -1074,19 +1120,19 @@ async function refreshEligibleVideos() {
       copyText(publicLink, document.getElementById("copyIslandLinkBtn"), "Copy island link");
     }
 
-async function addEligibleVideo() {
-  const button = document.getElementById("addEligibleVideoBtn");
-  setEligibleVideoError("");
+async function createCampaign() {
+  const button = document.getElementById("createCampaignBtn");
+  setCampaignError("");
 
   try {
     button.disabled = true;
     button.innerText = "Checking...";
-    await lookupEligibleVideoMetadata({ silent: true });
-    const payload = getEligibleVideoDraft();
+    await lookupCampaignMetadata({ silent: true });
+    const payload = getCampaignDraft();
 
-    button.innerText = "Adding...";
+    button.innerText = "Creating...";
 
-    const res = await fetch("/api/dashboard/videos", {
+    const res = await fetch("/api/dashboard/campaigns", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -1094,44 +1140,69 @@ async function addEligibleVideo() {
     const data = await res.json();
 
     if (!data.success) {
-      throw new Error(data.message || "Could not add video.");
+      throw new Error(data.message || "Could not create campaign.");
     }
 
-    document.getElementById("eligibleUrl").value = "";
-    document.getElementById("eligibleTitle").value = "";
-    document.getElementById("eligibleThumbnail").value = "";
-    clearThumbnailUpload();
-    setMetadataStatus("");
-    await refreshEligibleVideos();
+    document.getElementById("campaignUrl").value = "";
+    document.getElementById("campaignTitle").value = "";
+    document.getElementById("campaignThumbnail").value = "";
+    document.getElementById("campaignDescription").value = "";
+    clearCampaignThumbnailUpload();
+    setCampaignMetadataStatus("");
+    applyCampaignResponse(data);
   } catch (err) {
-    setEligibleVideoError(err.message || "Could not add video.");
+    setCampaignError(err.message || "Could not create campaign.");
   } finally {
     button.disabled = false;
-    button.innerText = "Add video";
+    button.innerText = "Create campaign";
   }
 }
 
-async function deleteEligibleVideo(videoId) {
-  const res = await fetch(`/api/dashboard/videos/${encodeURIComponent(videoId)}`, {
-    method: "DELETE"
+async function postCampaignAction(campaignId, action) {
+  setCampaignError("");
+
+  const res = await fetch(`/api/dashboard/campaigns/${encodeURIComponent(campaignId)}/${action}`, {
+    method: "POST"
   });
   const data = await res.json();
 
   if (!data.success) {
-    setEligibleVideoError(data.message || "Could not delete video.");
+    setCampaignError(data.message || "Could not update campaign.");
     return;
   }
 
-  await refreshEligibleVideos();
+  applyCampaignResponse(data);
+  const statsRes = await fetch("/api/dashboard/stats");
+  const countData = await statsRes.json();
+  renderPlatformStats(countData.platformCounts || {});
+  document.getElementById("totalSupports").innerText = Number(countData.supports || 0);
+  document.getElementById("estimatedEarned").innerText = "$" + Number(countData.earnings || 0).toFixed(2);
 }
 
-document.getElementById("eligibleUrl").addEventListener("input", scheduleEligibleVideoMetadataLookup);
-document.getElementById("eligibleUrl").addEventListener("blur", () => lookupEligibleVideoMetadata());
-document.getElementById("eligiblePlatform").addEventListener("change", () => {
-  setMetadataStatus("");
-  lookupEligibleVideoMetadata();
-});
-document.getElementById("eligibleThumbnailFile").addEventListener("change", handleThumbnailUpload);
+function activateCampaign(campaignId) {
+  const campaign = campaignsCache.find(item => item.id === campaignId);
+  const title = campaign?.title || "this campaign";
+  const confirmed = window.confirm(
+    `Make "${title}" active?\n\nAll new supports through your permanent Oscal link will go to this campaign.\nPrevious campaign support history will remain unchanged.`
+  );
+
+  if (!confirmed) return;
+  postCampaignAction(campaignId, "activate");
+}
+
+function deactivateCampaign(campaignId) {
+  postCampaignAction(campaignId, "deactivate");
+}
+
+function archiveCampaign(campaignId) {
+  const confirmed = window.confirm("Archive this campaign? Support history stays saved.");
+  if (!confirmed) return;
+  postCampaignAction(campaignId, "archive");
+}
+
+document.getElementById("campaignUrl").addEventListener("input", scheduleCampaignMetadataLookup);
+document.getElementById("campaignUrl").addEventListener("blur", () => lookupCampaignMetadata());
+document.getElementById("campaignThumbnailFile").addEventListener("change", handleCampaignThumbnailUpload);
 
     loadDashboard();
   </script>

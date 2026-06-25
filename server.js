@@ -518,6 +518,65 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_rate_limit_hits_bucket_time
     ON rate_limit_hits(bucket, created_at);
+  CREATE TABLE IF NOT EXISTS campaigns (
+    id TEXT PRIMARY KEY,
+    creator_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    video_url TEXT NOT NULL,
+    normalized_video_key TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    platform_video_id TEXT,
+    thumbnail_url TEXT,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL,
+    activated_at TEXT,
+    deactivated_at TEXT,
+    archived_at TEXT,
+    legacy_supports INTEGER NOT NULL DEFAULT 0,
+    legacy_earnings REAL NOT NULL DEFAULT 0,
+    UNIQUE (creator_id, normalized_video_key)
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_campaigns_one_active
+    ON campaigns (creator_id)
+    WHERE status = 'active';
+  CREATE INDEX IF NOT EXISTS idx_campaigns_creator_status
+    ON campaigns (creator_id, status);
+  CREATE TABLE IF NOT EXISTS campaign_supports (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    creator_id TEXT NOT NULL,
+    viewer_key TEXT NOT NULL,
+    anon_id TEXT,
+    fingerprint_hash TEXT,
+    attempt_id TEXT UNIQUE,
+    completed_at TEXT NOT NULL,
+    reward_amount REAL NOT NULL,
+    source_platform TEXT,
+    source_referrer TEXT,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_campaign_supports_viewer
+    ON campaign_supports (campaign_id, viewer_key);
+  CREATE INDEX IF NOT EXISTS idx_campaign_supports_creator_time
+    ON campaign_supports (creator_id, completed_at);
+  CREATE TABLE IF NOT EXISTS support_attempts (
+    id TEXT PRIMARY KEY,
+    creator_id TEXT NOT NULL,
+    campaign_id TEXT NOT NULL,
+    viewer_key TEXT NOT NULL,
+    anon_id TEXT,
+    fingerprint_hash TEXT,
+    source_platform TEXT,
+    source_referrer TEXT,
+    started_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at INTEGER,
+    status TEXT NOT NULL DEFAULT 'started',
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_support_attempts_campaign_viewer
+    ON support_attempts (campaign_id, viewer_key);
 `);
 
 const getStateStmt = db.prepare("SELECT value FROM app_state WHERE key = ?");
@@ -966,10 +1025,11 @@ function canonicalizeStoredCreatorStats() {
 canonicalizeStoredCreatorStats();
 
 // ---------- Config ----------
-const MAX_SUPPORTS_PER_DAY = 3;
+const MAX_CAMPAIGN_SUPPORTS_PER_VIEWER = 3;
 const COOLDOWN_MS = 30_000; // 30 seconds
 const REWARD_PER_SUPPORT = 0.05;
 const MIN_AD_WATCH_MS = 14_000; // basic backend validation
+const SUPPORT_ATTEMPT_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_BETA_END_AT = Date.UTC(2026, 8, 1);
 const parsedBetaEndAt = Date.parse(process.env.BETA_END_AT || "");
 const BETA_END_AT = Number.isFinite(parsedBetaEndAt)
@@ -1059,8 +1119,9 @@ function getPlatformLabel(platform) {
     tiktok: "TikTok",
     instagram: "Instagram",
     youtube: "YouTube",
-    direct: "Direct"
-  }[normalizeSourcePlatform(platform)] || "Direct";
+    direct: "Direct",
+    other: "Other"
+  }[String(platform || "").trim().toLowerCase()] || "Other";
 }
 
 function cleanText(value, maxLength = 160) {
@@ -1307,6 +1368,587 @@ function getEligibleVideos(creatorKey, platform, limit = 0) {
   const videos = platformVideos.length ? platformVideos : allVideos;
 
   return limit > 0 ? videos.slice(0, limit) : videos;
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function normalizeCampaignUrlForKey(value) {
+  const raw = normalizeOptionalUrl(value, 1200);
+  if (!raw) return "";
+
+  const url = new URL(raw);
+  url.hash = "";
+  ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"]
+    .forEach(param => url.searchParams.delete(param));
+  return url.toString();
+}
+
+function getYouTubeCampaignId(url) {
+  const host = url.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
+
+  if (host === "youtu.be") {
+    return url.pathname.split("/").filter(Boolean)[0] || "";
+  }
+
+  if (host === "youtube.com") {
+    if (url.searchParams.get("v")) return url.searchParams.get("v");
+
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (["shorts", "embed", "live"].includes(parts[0])) return parts[1] || "";
+  }
+
+  return "";
+}
+
+function getTikTokCampaignId(url) {
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  if (!["tiktok.com", "vm.tiktok.com", "vt.tiktok.com"].includes(host)) return "";
+
+  const parts = url.pathname.split("/").filter(Boolean);
+  const videoIndex = parts.indexOf("video");
+  if (videoIndex >= 0 && parts[videoIndex + 1]) return parts[videoIndex + 1];
+
+  return "";
+}
+
+function getInstagramCampaignId(url) {
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  if (host !== "instagram.com") return "";
+
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (["p", "reel", "tv"].includes(parts[0])) return parts[1] || "";
+
+  return "";
+}
+
+function normalizeCampaignVideoIdentity(value) {
+  const normalizedUrl = normalizeCampaignUrlForKey(value);
+  if (!normalizedUrl) {
+    throw new Error("INVALID_VIDEO_URL");
+  }
+
+  const url = new URL(normalizedUrl);
+  const host = url.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
+
+  let platform = "other";
+  let platformVideoId = "";
+
+  if (host === "youtube.com" || host === "youtu.be") {
+    platform = "youtube";
+    platformVideoId = getYouTubeCampaignId(url);
+  } else if (["tiktok.com", "vm.tiktok.com", "vt.tiktok.com"].includes(host)) {
+    platform = "tiktok";
+    platformVideoId = getTikTokCampaignId(url);
+  } else if (host === "instagram.com") {
+    platform = "instagram";
+    platformVideoId = getInstagramCampaignId(url);
+  }
+
+  const normalizedVideoKey =
+    platformVideoId
+      ? `${platform}:${platformVideoId}`
+      : `${platform}:${normalizedUrl}`;
+
+  return {
+    videoUrl: normalizedUrl,
+    platform,
+    platformVideoId,
+    normalizedVideoKey
+  };
+}
+
+async function getCampaignMetadataPreview(videoUrl) {
+  let identity;
+  try {
+    identity = normalizeCampaignVideoIdentity(videoUrl);
+  } catch (_) {
+    const err = new Error("INVALID_VIDEO_URL");
+    err.code = "INVALID_VIDEO_URL";
+    throw err;
+  }
+
+  let metadata = { title: "", thumbnailUrl: "" };
+  let warning = "";
+
+  if (CONTENT_PLATFORMS.has(identity.platform)) {
+    try {
+      metadata = await fetchPlatformPostMetadata(identity.platform, identity.videoUrl);
+    } catch (err) {
+      warning = "Could not auto-fill this video. Add the title or thumbnail manually.";
+      debugLog("Could not fetch campaign metadata:", err.message);
+    }
+  }
+
+  return {
+    platform: identity.platform,
+    platformLabel: getPlatformLabel(identity.platform),
+    platformVideoId: identity.platformVideoId,
+    normalizedVideoKey: identity.normalizedVideoKey,
+    videoUrl: identity.videoUrl,
+    title: cleanText(metadata.title, 140),
+    thumbnailUrl: normalizeOptionalUrl(metadata.thumbnailUrl, 1200),
+    warning
+  };
+}
+
+function campaignErrorPayload(err) {
+  const code = err?.code || err?.message || "CAMPAIGN_ERROR";
+  const statusByCode = {
+    NO_ACTIVE_CAMPAIGN: 404,
+    CAMPAIGN_NOT_FOUND: 404,
+    CAMPAIGN_NOT_OWNED: 403,
+    CAMPAIGN_ALREADY_ACTIVE: 409,
+    CAMPAIGN_ARCHIVED: 409,
+    DUPLICATE_VIDEO_CAMPAIGN: 409,
+    CAMPAIGN_SUPPORT_LIMIT_REACHED: 409,
+    CAMPAIGN_CHANGED: 409,
+    INVALID_VIDEO_URL: 400,
+    INVALID_CAMPAIGN_TITLE: 400,
+    INVALID_THUMBNAIL_UPLOAD: 400,
+    AD_WATCH_TOO_SHORT: 400,
+    SUPPORT_ATTEMPT_ALREADY_USED: 409,
+    RATE_LIMITED: 429,
+    SELF_SUPPORT_NOT_ALLOWED: 403
+  };
+  const messageByCode = {
+    NO_ACTIVE_CAMPAIGN: "This creator does not currently have an active support island.",
+    CAMPAIGN_NOT_FOUND: "Campaign not found.",
+    CAMPAIGN_NOT_OWNED: "That campaign does not belong to this creator.",
+    CAMPAIGN_ALREADY_ACTIVE: "That campaign is already active.",
+    CAMPAIGN_ARCHIVED: "Archived campaigns cannot be used.",
+    DUPLICATE_VIDEO_CAMPAIGN: "That video already has a campaign.",
+    CAMPAIGN_SUPPORT_LIMIT_REACHED: "You fully supported this video.",
+    CAMPAIGN_CHANGED: "The active campaign changed. Please start again.",
+    INVALID_VIDEO_URL: "Enter a normal HTTP or HTTPS video URL.",
+    INVALID_CAMPAIGN_TITLE: "Add a campaign title.",
+    INVALID_THUMBNAIL_UPLOAD: err?.message || "Could not save thumbnail image.",
+    AD_WATCH_TOO_SHORT: "Ad not fully watched.",
+    SUPPORT_ATTEMPT_ALREADY_USED: "This support was already completed.",
+    RATE_LIMITED: "Too many attempts. Try again soon.",
+    SELF_SUPPORT_NOT_ALLOWED: "You cannot support your own island."
+  };
+
+  return {
+    status: statusByCode[code] || 400,
+    body: {
+      success: false,
+      code,
+      message: messageByCode[code] || "Could not update campaign."
+    }
+  };
+}
+
+function sendCampaignError(res, err) {
+  const payload = campaignErrorPayload(err);
+  return res.status(payload.status).json(payload.body);
+}
+
+function getCreatorPublicLink(slug) {
+  return `/${encodeURIComponent(String(slug || "").replace(/^@+/, ""))}`;
+}
+
+function campaignRowToJson(row) {
+  if (!row) return null;
+
+  const supportStats = db.prepare(`
+    SELECT COUNT(*) AS supports, COALESCE(SUM(reward_amount), 0) AS earnings
+    FROM campaign_supports
+    WHERE campaign_id = ?
+  `).get(row.id);
+  const completedSupports = Number(supportStats?.supports || 0);
+  const completedEarnings = Number(supportStats?.earnings || 0);
+  const legacySupports = Number(row.legacy_supports || 0);
+  const legacyEarnings = Number(row.legacy_earnings || 0);
+
+  return {
+    id: row.id,
+    creatorId: row.creator_id,
+    title: row.title,
+    videoUrl: row.video_url,
+    normalizedVideoKey: row.normalized_video_key,
+    platform: row.platform,
+    platformVideoId: row.platform_video_id || "",
+    thumbnailUrl: row.thumbnail_url || "",
+    description: row.description || "",
+    status: row.status,
+    createdAt: row.created_at,
+    activatedAt: row.activated_at || "",
+    deactivatedAt: row.deactivated_at || "",
+    archivedAt: row.archived_at || "",
+    completedSupports,
+    completedEarnings,
+    legacySupports,
+    legacyEarnings,
+    totalSupports: completedSupports + legacySupports,
+    totalEarnings: Number((completedEarnings + legacyEarnings).toFixed(2))
+  };
+}
+
+function getCampaignById(campaignId) {
+  const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(String(campaignId || ""));
+  return campaignRowToJson(row);
+}
+
+function getActiveCampaignForCreator(creatorId) {
+  const row = db.prepare(`
+    SELECT * FROM campaigns
+    WHERE creator_id = ? AND status = 'active'
+    ORDER BY activated_at DESC
+    LIMIT 1
+  `).get(creatorId);
+
+  return campaignRowToJson(row);
+}
+
+function getCampaignsForCreator(creatorId) {
+  return db.prepare(`
+    SELECT * FROM campaigns
+    WHERE creator_id = ?
+    ORDER BY
+      CASE status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 WHEN 'inactive' THEN 2 ELSE 3 END,
+      COALESCE(activated_at, created_at) DESC
+  `).all(creatorId).map(campaignRowToJson);
+}
+
+function getCreatorCampaignTotals(creatorId) {
+  const campaigns = getCampaignsForCreator(creatorId);
+  return campaigns.reduce((totals, campaign) => {
+    totals.supports += Number(campaign.totalSupports || 0);
+    totals.earnings += Number(campaign.totalEarnings || 0);
+    return totals;
+  }, { supports: 0, earnings: 0 });
+}
+
+function getCampaignViewerKey(req, fingerprint) {
+  return getDeviceProgressKey(req, fingerprint);
+}
+
+function getCampaignSupportCount(campaignId, viewerKey) {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM campaign_supports
+    WHERE campaign_id = ? AND viewer_key = ?
+  `).get(campaignId, viewerKey);
+
+  return Number(row?.count || 0);
+}
+
+function getCampaignStatusPayload(req, creatorId, fingerprint) {
+  const activeCampaign = getActiveCampaignForCreator(creatorId);
+  const viewerKey = getCampaignViewerKey(req, fingerprint);
+
+  if (!activeCampaign) {
+    return {
+      activeCampaign: null,
+      completedSupports: 0,
+      remainingSupports: 0,
+      maxSupports: MAX_CAMPAIGN_SUPPORTS_PER_VIEWER,
+      canSupport: false,
+      reason: "NO_ACTIVE_CAMPAIGN"
+    };
+  }
+
+  const completedSupports = getCampaignSupportCount(activeCampaign.id, viewerKey);
+  const remainingSupports = Math.max(0, MAX_CAMPAIGN_SUPPORTS_PER_VIEWER - completedSupports);
+
+  return {
+    activeCampaign,
+    completedSupports,
+    remainingSupports,
+    maxSupports: MAX_CAMPAIGN_SUPPORTS_PER_VIEWER,
+    canSupport: remainingSupports > 0,
+    reason: remainingSupports > 0 ? "" : "CAMPAIGN_SUPPORT_LIMIT_REACHED"
+  };
+}
+
+function createCampaignForCreator(creatorId, payload = {}) {
+  const title = cleanText(payload.title, 140);
+  const description = cleanText(payload.description, 600);
+  let thumbnailUrl = normalizeOptionalUrl(payload.thumbnailUrl, 1200);
+
+  if (!title || title.length < 2) {
+    const err = new Error("INVALID_CAMPAIGN_TITLE");
+    err.code = "INVALID_CAMPAIGN_TITLE";
+    throw err;
+  }
+
+  let identity;
+  try {
+    identity = normalizeCampaignVideoIdentity(payload.videoUrl);
+  } catch (_) {
+    const err = new Error("INVALID_VIDEO_URL");
+    err.code = "INVALID_VIDEO_URL";
+    throw err;
+  }
+
+  const campaignId = `campaign_${crypto.randomBytes(12).toString("hex")}`;
+
+  if (payload.thumbnailImageData) {
+    try {
+      thumbnailUrl = saveThumbnailUpload(payload.thumbnailImageData, creatorId, campaignId);
+    } catch (err) {
+      err.code = err.code || "INVALID_THUMBNAIL_UPLOAD";
+      throw err;
+    }
+  }
+
+  const campaign = {
+    id: campaignId,
+    creatorId,
+    title,
+    videoUrl: identity.videoUrl,
+    normalizedVideoKey: identity.normalizedVideoKey,
+    platform: identity.platform,
+    platformVideoId: identity.platformVideoId,
+    thumbnailUrl,
+    description,
+    createdAt: nowIso()
+  };
+
+  try {
+    db.prepare(`
+      INSERT INTO campaigns (
+        id, creator_id, title, video_url, normalized_video_key, platform,
+        platform_video_id, thumbnail_url, description, status, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
+    `).run(
+      campaign.id,
+      campaign.creatorId,
+      campaign.title,
+      campaign.videoUrl,
+      campaign.normalizedVideoKey,
+      campaign.platform,
+      campaign.platformVideoId,
+      campaign.thumbnailUrl,
+      campaign.description,
+      campaign.createdAt
+    );
+  } catch (err) {
+    if (String(err.message || "").includes("UNIQUE")) {
+      const duplicate = new Error("DUPLICATE_VIDEO_CAMPAIGN");
+      duplicate.code = "DUPLICATE_VIDEO_CAMPAIGN";
+      throw duplicate;
+    }
+
+    throw err;
+  }
+
+  return getCampaignById(campaign.id);
+}
+
+function activateCampaignForCreator(creatorId, campaignId) {
+  const campaign = getCampaignById(campaignId);
+
+  if (!campaign) {
+    const err = new Error("CAMPAIGN_NOT_FOUND");
+    err.code = "CAMPAIGN_NOT_FOUND";
+    throw err;
+  }
+
+  if (campaign.creatorId !== creatorId) {
+    const err = new Error("CAMPAIGN_NOT_OWNED");
+    err.code = "CAMPAIGN_NOT_OWNED";
+    throw err;
+  }
+
+  if (campaign.status === "active") {
+    const err = new Error("CAMPAIGN_ALREADY_ACTIVE");
+    err.code = "CAMPAIGN_ALREADY_ACTIVE";
+    throw err;
+  }
+
+  if (campaign.status === "archived") {
+    const err = new Error("CAMPAIGN_ARCHIVED");
+    err.code = "CAMPAIGN_ARCHIVED";
+    throw err;
+  }
+
+  const timestamp = nowIso();
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      UPDATE campaigns
+      SET status = 'inactive', deactivated_at = ?
+      WHERE creator_id = ? AND status = 'active'
+    `).run(timestamp, creatorId);
+    db.prepare(`
+      UPDATE campaigns
+      SET status = 'active', activated_at = ?, deactivated_at = NULL
+      WHERE id = ? AND creator_id = ?
+    `).run(timestamp, campaignId, creatorId);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+
+  return getCampaignById(campaignId);
+}
+
+function deactivateCampaignForCreator(creatorId, campaignId) {
+  const campaign = getCampaignById(campaignId);
+
+  if (!campaign) {
+    const err = new Error("CAMPAIGN_NOT_FOUND");
+    err.code = "CAMPAIGN_NOT_FOUND";
+    throw err;
+  }
+
+  if (campaign.creatorId !== creatorId) {
+    const err = new Error("CAMPAIGN_NOT_OWNED");
+    err.code = "CAMPAIGN_NOT_OWNED";
+    throw err;
+  }
+
+  if (campaign.status === "archived") {
+    const err = new Error("CAMPAIGN_ARCHIVED");
+    err.code = "CAMPAIGN_ARCHIVED";
+    throw err;
+  }
+
+  const timestamp = nowIso();
+  db.prepare(`
+    UPDATE campaigns
+    SET status = 'inactive', deactivated_at = ?
+    WHERE id = ? AND creator_id = ?
+  `).run(timestamp, campaignId, creatorId);
+
+  return getCampaignById(campaignId);
+}
+
+function archiveCampaignForCreator(creatorId, campaignId) {
+  const campaign = getCampaignById(campaignId);
+
+  if (!campaign) {
+    const err = new Error("CAMPAIGN_NOT_FOUND");
+    err.code = "CAMPAIGN_NOT_FOUND";
+    throw err;
+  }
+
+  if (campaign.creatorId !== creatorId) {
+    const err = new Error("CAMPAIGN_NOT_OWNED");
+    err.code = "CAMPAIGN_NOT_OWNED";
+    throw err;
+  }
+
+  const timestamp = nowIso();
+  db.prepare(`
+    UPDATE campaigns
+    SET status = 'archived', archived_at = ?, deactivated_at = COALESCE(deactivated_at, ?)
+    WHERE id = ? AND creator_id = ?
+  `).run(timestamp, timestamp, campaignId, creatorId);
+
+  return getCampaignById(campaignId);
+}
+
+function ensureLegacyCampaigns() {
+  Object.entries(creatorStats || {}).forEach(([creator, stats]) => {
+    const creatorId = getCanonicalCreatorKey(creator);
+    const supports = Number(stats?.supports || 0);
+    const earnings = Number(stats?.earnings || 0);
+
+    if (!creatorId || supports <= 0) return;
+
+    const existingLegacy = db.prepare(`
+      SELECT id FROM campaigns
+      WHERE creator_id = ? AND normalized_video_key = ?
+      LIMIT 1
+    `).get(creatorId, `legacy:${creatorId}`);
+
+    if (existingLegacy) return;
+
+    const campaignSupportStats = db.prepare(`
+      SELECT COUNT(*) AS supports, COALESCE(SUM(reward_amount), 0) AS earnings
+      FROM campaign_supports
+      WHERE creator_id = ?
+    `).get(creatorId);
+    const legacySupports = Math.max(0, supports - Number(campaignSupportStats?.supports || 0));
+    const legacyEarnings = Math.max(0, earnings - Number(campaignSupportStats?.earnings || 0));
+
+    if (legacySupports <= 0 && legacyEarnings <= 0) return;
+
+    db.prepare(`
+      INSERT INTO campaigns (
+        id, creator_id, title, video_url, normalized_video_key, platform,
+        platform_video_id, thumbnail_url, description, status, created_at,
+        legacy_supports, legacy_earnings
+      )
+      VALUES (?, ?, 'Legacy supports', ?, ?, 'other', '', '', 'Historical supports before campaign tracking.', 'inactive', ?, ?, ?)
+      ON CONFLICT(creator_id, normalized_video_key) DO NOTHING
+    `).run(
+      `legacy_${hashFingerprint(creatorId).slice(0, 18)}`,
+      creatorId,
+      `legacy:${creatorId}`,
+      `legacy:${creatorId}`,
+      new Date(0).toISOString(),
+      legacySupports,
+      legacyEarnings
+    );
+  });
+}
+
+function createSupportAttempt({
+  creatorId,
+  campaignId,
+  viewerKey,
+  anonId,
+  fingerprintHash,
+  sourcePlatform,
+  sourceReferrer,
+  startedAt = Date.now()
+}) {
+  const attemptId = `attempt_${crypto.randomBytes(18).toString("hex")}`;
+  const expiresAt = startedAt + SUPPORT_ATTEMPT_TTL_MS;
+
+  db.prepare(`
+    INSERT INTO support_attempts (
+      id, creator_id, campaign_id, viewer_key, anon_id, fingerprint_hash,
+      source_platform, source_referrer, started_at, expires_at, status
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'started')
+  `).run(
+    attemptId,
+    creatorId,
+    campaignId,
+    viewerKey,
+    String(anonId || "").trim(),
+    fingerprintHash,
+    sourcePlatform,
+    sourceReferrer || "",
+    startedAt,
+    expiresAt
+  );
+
+  return {
+    id: attemptId,
+    creatorId,
+    campaignId,
+    viewerKey,
+    anonId: String(anonId || "").trim(),
+    fingerprintHash,
+    sourcePlatform,
+    sourceReferrer: sourceReferrer || "",
+    startedAt,
+    expiresAt,
+    status: "started"
+  };
+}
+
+function getSupportAttempt(attemptId) {
+  return db.prepare("SELECT * FROM support_attempts WHERE id = ?")
+    .get(String(attemptId || ""));
+}
+
+function markSupportAttemptUsed(attemptId, timestamp = Date.now()) {
+  db.prepare(`
+    UPDATE support_attempts
+    SET used_at = ?, status = 'completed'
+    WHERE id = ?
+  `).run(timestamp, attemptId);
 }
 
 function normalizeSupportRecord(record, creatorKey = "") {
@@ -1801,6 +2443,7 @@ function attachSupporterBadges(item) {
 hydrateBadgeStateFromRecentSupports();
 normalizeCreatorVideoState();
 hydrateSupportRecordsFromRecentSupports();
+ensureLegacyCampaigns();
 
 app.get("/api/stickers", enforceRateLimit("stickers", 60_000, 60), (req, res) => {
   res.json({
@@ -1812,41 +2455,38 @@ app.get("/api/stickers", enforceRateLimit("stickers", 60_000, 60), (req, res) =>
 // ---------- Event endpoint ----------
 app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
   const {
-  type,
-  creator,
-  fingerprint,
-  anonId,
-  timeZone,
-  deviceFamily = "",
-  supporterView = false,
-  videoId = "main",
-  videoTitle = "Main support page",
-  videoThumbnail = "",
-  platform = "unknown",
-  selfSupportTest = false,
-  sourcePlatform = "direct"
-} = req.body;
+    type,
+    creator,
+    fingerprint,
+    anonId,
+    timeZone,
+    deviceFamily = "",
+    sourcePlatform = "direct",
+    supportAttemptId = "",
+    campaignId = ""
+  } = req.body;
 
-debugLog("EVENT RECEIVED:", {
-  type,
-  creator,
-  anonId,
-  timeZone,
-  deviceFamily,
-  supporterView,
-  selfSupportTest,
-  sourcePlatform
-});
+  debugLog("EVENT RECEIVED:", {
+    type,
+    creator,
+    anonId,
+    timeZone,
+    deviceFamily,
+    sourcePlatform,
+    supportAttemptId,
+    campaignId
+  });
 
   if (!type || !creator || !fingerprint || !timeZone) {
-    return res.json({ success: false, message: 'Missing data' });
+    return res.json({ success: false, code: "MISSING_DATA", message: 'Missing data' });
   }
 
   const creatorKey = getCanonicalCreatorKey(creator, req);
   const recordedSourcePlatform = normalizeSourcePlatform(
-    req.session?.viewerSourcePlatforms?.[creatorKey],
+    req.session?.viewerSourcePlatforms?.[creatorKey] || sourcePlatform,
     "direct"
   );
+  const sourceReferrer = cleanText(req.get("referer") || req.get("referrer") || "", 1000);
   const isCreatorOwnerRequest =
     isLoggedInCreatorForSlug(req, creator) ||
     isKnownCreatorOwnerDevice(req, creator, deviceFamily);
@@ -1854,6 +2494,7 @@ debugLog("EVENT RECEIVED:", {
   if (isCreatorOwnerRequest) {
     return res.json({
       success: false,
+      code: "SELF_SUPPORT_NOT_ALLOWED",
       message: "You cannot support your own island."
     });
   }
@@ -1869,16 +2510,17 @@ debugLog("EVENT RECEIVED:", {
     res.set("Retry-After", String(typeLimit.retryAfter));
     return res.status(429).json({
       success: false,
+      code: "RATE_LIMITED",
       message: "Too many support attempts. Try again soon.",
       wait: typeLimit.retryAfter
     });
   }
 
   const deviceProgressKey = getDeviceProgressKey(req, fingerprint);
+  const viewerKey = getCampaignViewerKey(req, fingerprint);
   const today = getToday(timeZone);
   const now = Date.now();
 
-  // init user root if first time
   if (!userProgress[deviceProgressKey]) {
     userProgress[deviceProgressKey] = {
       timeZone,
@@ -1886,16 +2528,14 @@ debugLog("EVENT RECEIVED:", {
     };
   }
 
-  // lock timezone to this fingerprint
   if (!userProgress[deviceProgressKey].timeZone) {
     userProgress[deviceProgressKey].timeZone = timeZone;
   }
 
   if (userProgress[deviceProgressKey].timeZone !== timeZone) {
-    return res.json({ success: false, message: 'Timezone mismatch' });
+    return res.json({ success: false, code: "TIMEZONE_MISMATCH", message: 'Timezone mismatch' });
   }
 
-  // init daily bucket
   if (!userProgress[deviceProgressKey].days[today]) {
     userProgress[deviceProgressKey].days[today] = {
       dailyCount: 0,
@@ -1906,81 +2546,212 @@ debugLog("EVENT RECEIVED:", {
 
   const userData = userProgress[deviceProgressKey].days[today];
 
-  // ---------- Anti-bot / self-support ----------
   if (deviceProgressKey === hashFingerprint(creator)) {
-    return res.json({ success: false, message: 'Cannot support yourself' });
+    return res.json({
+      success: false,
+      code: "SELF_SUPPORT_NOT_ALLOWED",
+      message: 'Cannot support yourself'
+    });
   }
 
-  // ---------- ad_start ----------
   if (type === 'ad_start') {
-    // cooldown
-    if (now - userData.lastComplete < COOLDOWN_MS) {
+    const activeCampaign = getActiveCampaignForCreator(creatorKey);
+
+    if (!activeCampaign) {
       return res.json({
         success: false,
+        code: "NO_ACTIVE_CAMPAIGN",
+        message: "This creator does not currently have an active support island."
+      });
+    }
+
+    if (now - Number(userData.lastComplete || 0) < COOLDOWN_MS) {
+      return res.json({
+        success: false,
+        code: "COOLDOWN_ACTIVE",
         message: 'Cooldown active',
         wait: Math.ceil((COOLDOWN_MS - (now - userData.lastComplete)) / 1000)
       });
     }
 
-    // daily cap
-    if (userData.dailyCount >= MAX_SUPPORTS_PER_DAY) {
+    const completedSupports = getCampaignSupportCount(activeCampaign.id, viewerKey);
+    if (completedSupports >= MAX_CAMPAIGN_SUPPORTS_PER_VIEWER) {
       return res.json({
         success: false,
-        message: 'Daily limit reached',
-        wait: getSecondsUntilUserMidnight(timeZone)
+        code: "CAMPAIGN_SUPPORT_LIMIT_REACHED",
+        message: "You fully supported this video.",
+        activeCampaign,
+        completedSupports,
+        remainingSupports: 0,
+        maxSupports: MAX_CAMPAIGN_SUPPORTS_PER_VIEWER
       });
     }
 
-    // mark ad start
+    const attempt = createSupportAttempt({
+      creatorId: creatorKey,
+      campaignId: activeCampaign.id,
+      viewerKey,
+      anonId,
+      fingerprintHash: deviceProgressKey,
+      sourcePlatform: recordedSourcePlatform,
+      sourceReferrer,
+      startedAt: now
+    });
+
     userData.adStartTime = now;
+    userData.supportAttemptId = attempt.id;
+    userData.adCampaignId = activeCampaign.id;
     saveData();
 
-    return res.json({ success: true });
+    return res.json({
+      success: true,
+      supportAttemptId: attempt.id,
+      campaignId: activeCampaign.id,
+      activeCampaign,
+      completedSupports,
+      remainingSupports: MAX_CAMPAIGN_SUPPORTS_PER_VIEWER - completedSupports,
+      maxSupports: MAX_CAMPAIGN_SUPPORTS_PER_VIEWER
+    });
   }
 
-  // ---------- ad_complete ----------
   if (type === 'ad_complete') {
-    // must have started an ad first
-    if (!userData.adStartTime) {
+    const attempt = getSupportAttempt(supportAttemptId || userData.supportAttemptId);
+
+    if (!attempt || attempt.creator_id !== creatorKey || attempt.viewer_key !== viewerKey) {
       return res.json({
         success: false,
-        message: 'Ad was not started properly'
+        code: "CAMPAIGN_CHANGED",
+        message: "This support attempt is no longer valid. Please start again."
       });
     }
 
-    // must have watched long enough
-    if (now - userData.adStartTime < MIN_AD_WATCH_MS) {
+    if (campaignId && campaignId !== attempt.campaign_id) {
       return res.json({
         success: false,
+        code: "CAMPAIGN_CHANGED",
+        message: "The active campaign changed. Please start again."
+      });
+    }
+
+    if (attempt.used_at || attempt.status === "completed") {
+      return res.json({
+        success: false,
+        code: "SUPPORT_ATTEMPT_ALREADY_USED",
+        message: "This support was already completed."
+      });
+    }
+
+    if (now > Number(attempt.expires_at || 0)) {
+      return res.json({
+        success: false,
+        code: "CAMPAIGN_CHANGED",
+        message: "This support attempt expired. Please start again."
+      });
+    }
+
+    const campaign = getCampaignById(attempt.campaign_id);
+    if (!campaign || campaign.creatorId !== creatorKey) {
+      return res.json({
+        success: false,
+        code: "CAMPAIGN_NOT_FOUND",
+        message: "Campaign not found."
+      });
+    }
+
+    if (campaign.status === "archived") {
+      return res.json({
+        success: false,
+        code: "CAMPAIGN_ARCHIVED",
+        message: "This campaign is no longer available."
+      });
+    }
+
+    if (now - Number(attempt.started_at || 0) < MIN_AD_WATCH_MS) {
+      return res.json({
+        success: false,
+        code: "AD_WATCH_TOO_SHORT",
         message: 'Ad not fully watched'
       });
     }
 
-    // re-check cooldown just in case
-    if (now - userData.lastComplete < COOLDOWN_MS) {
+    if (now - Number(userData.lastComplete || 0) < COOLDOWN_MS) {
       return res.json({
         success: false,
+        code: "COOLDOWN_ACTIVE",
         message: 'Cooldown active',
         wait: Math.ceil((COOLDOWN_MS - (now - userData.lastComplete)) / 1000)
       });
     }
 
-    // re-check daily cap just in case
-    if (userData.dailyCount >= MAX_SUPPORTS_PER_DAY) {
+    const completedBefore = getCampaignSupportCount(campaign.id, viewerKey);
+    if (completedBefore >= MAX_CAMPAIGN_SUPPORTS_PER_VIEWER) {
       return res.json({
         success: false,
-        message: 'Daily limit reached',
-        wait: getSecondsUntilUserMidnight(timeZone)
+        code: "CAMPAIGN_SUPPORT_LIMIT_REACHED",
+        message: "You fully supported this video.",
+        activeCampaign: campaign,
+        completedSupports: completedBefore,
+        remainingSupports: 0,
+        maxSupports: MAX_CAMPAIGN_SUPPORTS_PER_VIEWER
       });
     }
 
-    // update user
-    userData.dailyCount++;
-    userData.lastComplete = now;
-    userData.adStartTime = 0;
     const supportId = `support_${crypto.randomBytes(12).toString("hex")}`;
 
-    // update creator
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const lockedCompletedBefore = getCampaignSupportCount(campaign.id, viewerKey);
+      if (lockedCompletedBefore >= MAX_CAMPAIGN_SUPPORTS_PER_VIEWER) {
+        db.exec("ROLLBACK");
+        return res.json({
+          success: false,
+          code: "CAMPAIGN_SUPPORT_LIMIT_REACHED",
+          message: "You fully supported this video.",
+          activeCampaign: campaign,
+          completedSupports: lockedCompletedBefore,
+          remainingSupports: 0,
+          maxSupports: MAX_CAMPAIGN_SUPPORTS_PER_VIEWER
+        });
+      }
+
+      db.prepare(`
+        INSERT INTO campaign_supports (
+          id, campaign_id, creator_id, viewer_key, anon_id, fingerprint_hash,
+          attempt_id, completed_at, reward_amount, source_platform, source_referrer
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        supportId,
+        campaign.id,
+        creatorKey,
+        viewerKey,
+        String(anonId || "").trim(),
+        deviceProgressKey,
+        attempt.id,
+        new Date(now).toISOString(),
+        REWARD_PER_SUPPORT,
+        attempt.source_platform || recordedSourcePlatform,
+        attempt.source_referrer || sourceReferrer
+      );
+      markSupportAttemptUsed(attempt.id, now);
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      if (String(err.message || "").includes("UNIQUE")) {
+        return res.json({
+          success: false,
+          code: "SUPPORT_ATTEMPT_ALREADY_USED",
+          message: "This support was already completed."
+        });
+      }
+      throw err;
+    }
+
+    userData.lastComplete = now;
+    userData.adStartTime = 0;
+    userData.supportAttemptId = "";
+    userData.adCampaignId = "";
+
     if (!creatorStats[creatorKey]) {
       creatorStats[creatorKey] = {
         supports: 0,
@@ -1995,96 +2766,98 @@ debugLog("EVENT RECEIVED:", {
     creatorStats[creatorKey].supports++;
     creatorStats[creatorKey].earnings += REWARD_PER_SUPPORT;
 
-if (!creatorStats[creatorKey].recentSupports) {
-  creatorStats[creatorKey].recentSupports = [];
-}
-recordSupporterStats(anonId, creatorKey, now);
-const badges = getSupporterBadgeCollection(anonId);
-const equippedBadge = getEquippedSupporterBadge(anonId);
-const savedProfile = supporterProfiles[anonId] || {};
+    if (!creatorStats[creatorKey].recentSupports) {
+      creatorStats[creatorKey].recentSupports = [];
+    }
 
-creatorStats[creatorKey].recentSupports.unshift({
-  supportId,
-  name: savedProfile.name || `Anonymous #${anonId || "0000"}`,
-  pfp: savedProfile.pfp || "",
-  anonId,
-  deviceProgressKey,
-  sourcePlatform: recordedSourcePlatform,
-  selectedVideoId: "",
-  attributionType: "skipped",
-  attributedAt: 0,
-  equippedBadge,
-  emoji: "",
-  time: now
-});
+    recordSupporterStats(anonId, creatorKey, now);
+    const badges = getSupporterBadgeCollection(anonId);
+    const equippedBadge = getEquippedSupporterBadge(anonId);
+    const savedProfile = supporterProfiles[anonId] || {};
 
-supportRecords[supportId] = {
-  supportId,
-  creatorSlug: creatorKey,
-  anonId: String(anonId || "").trim(),
-  deviceProgressKey,
-  sourcePlatform: recordedSourcePlatform,
-  selectedVideoId: "",
-  attributionType: "skipped",
-  completedAt: now,
-  attributedAt: 0
-};
+    creatorStats[creatorKey].recentSupports.unshift({
+      supportId,
+      campaignId: campaign.id,
+      campaignTitle: campaign.title,
+      name: savedProfile.name || `Anonymous #${anonId || "0000"}`,
+      pfp: savedProfile.pfp || "",
+      anonId,
+      deviceProgressKey,
+      sourcePlatform: attempt.source_platform || recordedSourcePlatform,
+      selectedVideoId: campaign.id,
+      attributionType: "selected_video",
+      attributedAt: now,
+      equippedBadge,
+      emoji: "",
+      time: now
+    });
 
-creatorStats[creatorKey].recentSupports = creatorStats[creatorKey].recentSupports.slice(0, 100);
+    supportRecords[supportId] = {
+      supportId,
+      campaignId: campaign.id,
+      campaignTitle: campaign.title,
+      creatorSlug: creatorKey,
+      anonId: String(anonId || "").trim(),
+      deviceProgressKey,
+      sourcePlatform: attempt.source_platform || recordedSourcePlatform,
+      selectedVideoId: campaign.id,
+      attributionType: "selected_video",
+      completedAt: now,
+      attributedAt: now
+    };
 
-const creatorSupportsForViewer = creatorStats[creatorKey].recentSupports.filter(item =>
-  String(item.anonId) === String(anonId)
-).length;
-    
+    creatorStats[creatorKey].recentSupports = creatorStats[creatorKey].recentSupports.slice(0, 100);
+
     if (!creatorStats[creatorKey].videos) {
-  creatorStats[creatorKey].videos = {};
-}
+      creatorStats[creatorKey].videos = {};
+    }
 
-if (!creatorStats[creatorKey].videos[videoId]) {
-  creatorStats[creatorKey].videos[videoId] = {
-    videoId,
-    videoTitle,
-    videoThumbnail,
-    platform,
-    supports: 0
-  };
-}
+    creatorStats[creatorKey].videos[campaign.id] = {
+      videoId: campaign.id,
+      videoTitle: campaign.title,
+      videoThumbnail: campaign.thumbnailUrl,
+      platform: campaign.platform,
+      supports: Number(creatorStats[creatorKey].videos[campaign.id]?.supports || 0) + 1
+    };
 
-creatorStats[creatorKey].videos[videoId].supports++;
-creatorStats[creatorKey].videos[videoId].videoTitle = videoTitle;
-creatorStats[creatorKey].videos[videoId].videoThumbnail = videoThumbnail;
-creatorStats[creatorKey].videos[videoId].platform = platform;
-
-    // log event once
     events.push({
       timestamp: now,
       creator: creatorKey,
       fingerprint: deviceProgressKey,
       type: 'support_complete',
       supportId,
-      sourcePlatform: recordedSourcePlatform,
+      campaignId: campaign.id,
+      sourcePlatform: attempt.source_platform || recordedSourcePlatform,
       timeZone
     });
 
     saveData();
 
-    const videos = Object.values(creatorStats[creatorKey].videos || {});
-const mostSupportedVideo =
-  videos.sort((a, b) => b.supports - a.supports)[0] || null;
+    const completedSupports = getCampaignSupportCount(campaign.id, viewerKey);
+    const remainingSupports = Math.max(0, MAX_CAMPAIGN_SUPPORTS_PER_VIEWER - completedSupports);
+    const creatorSupportsForViewer = creatorStats[creatorKey].recentSupports.filter(item =>
+      String(item.anonId) === String(anonId)
+    ).length;
+    const refreshedCampaign = getCampaignById(campaign.id);
 
-return res.json({
-  success: true,
-  supports: creatorStats[creatorKey].supports,
-  creatorSupports: creatorSupportsForViewer,
-  supportId,
-  sourcePlatform: recordedSourcePlatform,
-  badges,
-  equippedBadge,
-  mostSupportedVideo
-});
+    return res.json({
+      success: true,
+      supports: creatorStats[creatorKey].supports,
+      creatorSupports: creatorSupportsForViewer,
+      supportId,
+      campaignId: campaign.id,
+      activeCampaign: refreshedCampaign,
+      completedSupports,
+      remainingSupports,
+      maxSupports: MAX_CAMPAIGN_SUPPORTS_PER_VIEWER,
+      sourcePlatform: attempt.source_platform || recordedSourcePlatform,
+      badges,
+      equippedBadge,
+      mostSupportedVideo: refreshedCampaign
+    });
   }
 
-  return res.json({ success: false, message: 'Unknown event type' });
+  return res.json({ success: false, code: "UNKNOWN_EVENT_TYPE", message: 'Unknown event type' });
 });
 function requireCreatorLogin(req, res, next) {
   if (!req.session.creatorProfile) {
@@ -2100,7 +2873,7 @@ app.get("/dashboard", requireCreatorLogin, (req, res) => {
 });
 
 app.get("/support-island", requireCreatorLogin, (req, res) => {
-  res.redirect(`/island/${encodeURIComponent(req.session.creatorProfile.slug)}`);
+  res.redirect(getCreatorPublicLink(req.session.creatorProfile.slug));
 });
 
 // ---------- Count endpoint ----------
@@ -2125,10 +2898,19 @@ app.get('/count/:creator', enforceRateLimit("count", 60_000, 120), (req, res) =>
   const topVideos = videos
     .sort((a, b) => b.supports - a.supports)
     .slice(0, 5);
+  const campaigns = getCampaignsForCreator(creatorKey);
+  const activeCampaign = campaigns.find(campaign => campaign.status === "active") || null;
+  const campaignTotals = campaigns.reduce((totals, campaign) => {
+    totals.supports += Number(campaign.totalSupports || 0);
+    totals.earnings += Number(campaign.totalEarnings || 0);
+    return totals;
+  }, { supports: 0, earnings: 0 });
 
   res.json({
-    supports: creatorRecord.supports || 0,
-    earnings: Number((creatorRecord.earnings || 0).toFixed(2)),
+    supports: Math.max(Number(creatorRecord.supports || 0), campaignTotals.supports),
+    earnings: Number(Math.max(Number(creatorRecord.earnings || 0), campaignTotals.earnings).toFixed(2)),
+    activeCampaign,
+    campaigns,
     recentSupports: (creatorRecord.recentSupports || [])
   .sort((a, b) => b.time - a.time)
   .map(attachSupporterBadges),
@@ -2327,7 +3109,14 @@ app.get("/api/me", (req, res) => {
   res.json(req.session.creatorProfile || null);
 });
 app.get("/api/creator/:slug", enforceRateLimit("creator-profile", 60_000, 120), (req, res) => {
-  res.json(findCreatorProfile(req.params.slug, req));
+  const profile = findCreatorProfile(req.params.slug, req);
+  if (!profile) return res.json(null);
+
+  const creator = getCanonicalCreatorKey(profile.slug || req.params.slug, req);
+  res.json({
+    ...profile,
+    activeCampaign: getActiveCampaignForCreator(creator)
+  });
 });
 app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
   const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
@@ -2343,11 +3132,27 @@ app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
     .sort((a, b) => b.supports - a.supports)
     .slice(0, 5);
   const attributionStats = getVideoAttributionStats(creator);
+  const campaigns = getCampaignsForCreator(creator);
+  const activeCampaign = campaigns.find(campaign => campaign.status === "active") || null;
+  const campaignTotals = campaigns.reduce((totals, campaign) => {
+    totals.supports += Number(campaign.totalSupports || 0);
+    totals.earnings += Number(campaign.totalEarnings || 0);
+    return totals;
+  }, { supports: 0, earnings: 0 });
+  const campaignVideos = campaigns
+    .filter(campaign => campaign.status !== "archived" || Number(campaign.totalSupports || 0) > 0)
+    .sort((a, b) => Number(b.totalSupports || 0) - Number(a.totalSupports || 0));
 
   res.json({
     creator,
-    supports: creatorRecord.supports || 0,
-    earnings: Number((creatorRecord.earnings || 0).toFixed(2)),
+    supports: Math.max(Number(creatorRecord.supports || 0), campaignTotals.supports),
+    earnings: Number(Math.max(Number(creatorRecord.earnings || 0), campaignTotals.earnings).toFixed(2)),
+    activeCampaign,
+    campaigns,
+    campaignTotals: {
+      supports: campaignTotals.supports,
+      earnings: Number(campaignTotals.earnings.toFixed(2))
+    },
     recentSupports: (creatorRecord.recentSupports || [])
       .sort((a, b) => Number(b.time || 0) - Number(a.time || 0))
       .map(attachSupporterBadges),
@@ -2355,13 +3160,136 @@ app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
     topVideos,
     platformCounts: getPlatformCountsForCreator(creator),
     creatorVideos: getCreatorVideosList(creator),
-    mostSupportedVideos: attributionStats.videos,
+    mostSupportedVideos: campaignVideos.length ? campaignVideos : attributionStats.videos,
     attributionSummary: {
       creatorOnly: attributionStats.creatorOnly,
       noVideoSelected: attributionStats.noVideoSelected
     }
   });
 });
+
+app.get("/api/dashboard/campaigns", requireCreatorLogin, (req, res) => {
+  const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+
+  res.json({
+    success: true,
+    activeCampaign: getActiveCampaignForCreator(creator),
+    campaigns: getCampaignsForCreator(creator)
+  });
+});
+
+app.post(
+  "/api/dashboard/campaigns/metadata",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-campaign-metadata", 60_000, 20),
+  async (req, res) => {
+    try {
+      const preview = await getCampaignMetadataPreview(req.body.videoUrl);
+      res.json({ success: true, preview });
+    } catch (err) {
+      sendCampaignError(res, err);
+    }
+  }
+);
+
+app.post(
+  "/api/dashboard/campaigns",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-campaign-create", 60_000, 20),
+  (req, res) => {
+    const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+
+    try {
+      const campaign = createCampaignForCreator(creator, req.body);
+      res.json({
+        success: true,
+        campaign,
+        activeCampaign: getActiveCampaignForCreator(creator),
+        campaigns: getCampaignsForCreator(creator)
+      });
+    } catch (err) {
+      sendCampaignError(res, err);
+    }
+  }
+);
+
+app.get("/api/dashboard/campaigns/:campaignId", requireCreatorLogin, (req, res) => {
+  const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+  const campaign = getCampaignById(req.params.campaignId);
+
+  if (!campaign) {
+    return sendCampaignError(res, { code: "CAMPAIGN_NOT_FOUND" });
+  }
+
+  if (campaign.creatorId !== creator) {
+    return sendCampaignError(res, { code: "CAMPAIGN_NOT_OWNED" });
+  }
+
+  res.json({ success: true, campaign });
+});
+
+app.post(
+  "/api/dashboard/campaigns/:campaignId/activate",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-campaign-activate", 60_000, 20),
+  (req, res) => {
+    const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+
+    try {
+      const campaign = activateCampaignForCreator(creator, req.params.campaignId);
+      res.json({
+        success: true,
+        campaign,
+        activeCampaign: campaign,
+        campaigns: getCampaignsForCreator(creator)
+      });
+    } catch (err) {
+      sendCampaignError(res, err);
+    }
+  }
+);
+
+app.post(
+  "/api/dashboard/campaigns/:campaignId/deactivate",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-campaign-deactivate", 60_000, 20),
+  (req, res) => {
+    const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+
+    try {
+      const campaign = deactivateCampaignForCreator(creator, req.params.campaignId);
+      res.json({
+        success: true,
+        campaign,
+        activeCampaign: getActiveCampaignForCreator(creator),
+        campaigns: getCampaignsForCreator(creator)
+      });
+    } catch (err) {
+      sendCampaignError(res, err);
+    }
+  }
+);
+
+app.post(
+  "/api/dashboard/campaigns/:campaignId/archive",
+  requireCreatorLogin,
+  enforceRateLimit("dashboard-campaign-archive", 60_000, 20),
+  (req, res) => {
+    const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+
+    try {
+      const campaign = archiveCampaignForCreator(creator, req.params.campaignId);
+      res.json({
+        success: true,
+        campaign,
+        activeCampaign: getActiveCampaignForCreator(creator),
+        campaigns: getCampaignsForCreator(creator)
+      });
+    } catch (err) {
+      sendCampaignError(res, err);
+    }
+  }
+);
 
 app.get("/api/dashboard/videos", requireCreatorLogin, (req, res) => {
   const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
@@ -2621,7 +3549,9 @@ app.post("/support/status", enforceRateLimit("support-status", 60_000, 60), (req
 
 let lifetimeSupports = getSupporterLifetimeSupports(anonId);
 let creatorSupports = 0;
-const { stats: creatorRecord } = getCreatorStatsRecord(creator, req);
+const creatorKey = getCanonicalCreatorKey(creator, req);
+const { stats: creatorRecord } = getCreatorStatsRecord(creatorKey, req);
+const campaignStatus = getCampaignStatusPayload(req, creatorKey, fingerprint);
 
 if (creatorRecord?.recentSupports) {
   creatorRecord.recentSupports.forEach(item => {
@@ -2644,6 +3574,7 @@ const equippedBadge = getEquippedSupporterBadge(anonId, lifetimeSupports);
     return res.json({
       success: true,
       wait: 0,
+      ...campaignStatus,
       lifetimeSupports,
       creatorSupports,
       hasProfile,
@@ -2655,10 +3586,19 @@ const equippedBadge = getEquippedSupporterBadge(anonId, lifetimeSupports);
 
   const now = Date.now();
   const remaining = COOLDOWN_MS - (now - userData.lastComplete);
+  const wait = remaining > 0 ? Math.ceil(remaining / 1000) : 0;
+  const nextCampaignStatus = {
+    ...campaignStatus,
+    canSupport: campaignStatus.canSupport && wait <= 0,
+    reason:
+      campaignStatus.reason ||
+      (wait > 0 ? "COOLDOWN_ACTIVE" : "")
+  };
 
   res.json({
     success: true,
-    wait: remaining > 0 ? Math.ceil(remaining / 1000) : 0,
+    wait,
+    ...nextCampaignStatus,
     lifetimeSupports,
     creatorSupports,
     hasProfile,

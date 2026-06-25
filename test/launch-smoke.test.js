@@ -35,7 +35,8 @@ test("owner-device self-support guard is wired through viewer and dashboard", ()
 });
 
 test("launch support limits and owner self-support block are restored", () => {
-  assert.match(server, /const MAX_SUPPORTS_PER_DAY = 3/);
+  assert.match(server, /const MAX_CAMPAIGN_SUPPORTS_PER_VIEWER = 3/);
+  assert.doesNotMatch(server, /const MAX_SUPPORTS_PER_DAY/);
   assert.match(viewer, /const selfSupportTestMode = false/);
   assert.match(viewer, /const ownerSelfSupportTestMode = false/);
   assert.match(viewer, /isCreatorViewingOwnIsland\s*&&\s*!ownerSelfSupportTestMode/);
@@ -53,37 +54,82 @@ test("creator login entrypoint is platform neutral", () => {
   assert.doesNotMatch(terms, /sign in with YouTube/);
 });
 
-test("dashboard shows dated support activity and platform video attribution controls", () => {
+test("dashboard shows dated support activity and campaign controls", () => {
   assert.match(dashboard, /function formatSupportTimestamp/);
   assert.doesNotMatch(dashboard, /toLocaleTimeString/);
   assert.match(dashboard, /max-height:\s*min\(560px,\s*58vh\)/);
   assert.match(dashboard, /overflow-y:\s*auto/);
   assert.match(dashboard, /Your platform links/);
   assert.match(dashboard, /Where supporters came from/);
-  assert.match(dashboard, /Eligible videos/);
-  assert.match(dashboard, /Most-supported videos/);
+  assert.match(dashboard, /Support island campaign/);
+  assert.match(dashboard, /Campaign breakdown/);
+  assert.match(dashboard, /Create campaign/);
+  assert.match(dashboard, /Make active/);
+  assert.match(dashboard, /Deactivate/);
+  assert.match(dashboard, /Archive/);
+  assert.match(dashboard, /Thumbnail image upload/);
   assert.doesNotMatch(dashboard, /Create tracked content link/);
   assert.doesNotMatch(dashboard, /contentThumbnailFile/);
   assert.doesNotMatch(server, /\/api\/dashboard\/thumbnail/);
-  assert.match(server, /creatorVideos/);
-  assert.match(server, /supportRecords/);
-  assert.match(server, /app\.get\("\/api\/dashboard\/videos"/);
-  assert.match(server, /\/api\/dashboard\/videos\/metadata/);
+  assert.match(server, /app\.get\("\/api\/dashboard\/campaigns"/);
+  assert.match(server, /\/api\/dashboard\/campaigns\/metadata/);
+  assert.match(server, /\/api\/dashboard\/campaigns\/:campaignId\/activate/);
+  assert.match(server, /\/api\/dashboard\/campaigns\/:campaignId\/deactivate/);
+  assert.match(server, /\/api\/dashboard\/campaigns\/:campaignId\/archive/);
   assert.match(server, /https:\/\/www\.tiktok\.com\/oembed/);
   assert.match(server, /https:\/\/www\.youtube\.com\/oembed/);
   assert.match(server, /function saveThumbnailUpload/);
-  assert.match(server, /recordSourcePlatform === "direct"/);
-  assert.match(server, /matchingPlatformVideos\.length === 0/);
-  assert.match(server, /app\.post\(\s*"\/support\/attribute-video"/);
-  assert.match(viewer, /Which video made you want to support/);
-  assert.match(viewer, /showVideoAttributionPrompt/);
+  assert.match(viewer, /activeCampaign/);
+  assert.match(viewer, /campaignRemainingSupports/);
+  assert.doesNotMatch(viewer, /Which video made you want to support/);
+  assert.doesNotMatch(viewer, /showVideoAttributionPrompt/);
   assert.match(viewer, /sourcePlatform/);
-  assert.match(dashboard, /Post details filled automatically/);
-  assert.match(dashboard, /<option value="youtube">YouTube<\/option>/);
-  assert.match(dashboard, /Thumbnail image upload/);
+  assert.match(dashboard, /Looking up video details/);
   assert.match(dashboard, /thumbnailImageData/);
   assert.doesNotMatch(dashboard, /toggleVideoEligibility/);
   assert.doesNotMatch(dashboard, />Pause</);
+});
+
+test("campaign tables and active campaign uniqueness are migrated in SQLite", () => {
+  assert.match(server, /CREATE TABLE IF NOT EXISTS campaigns/);
+  assert.match(server, /CREATE UNIQUE INDEX IF NOT EXISTS idx_campaigns_one_active/);
+  assert.match(server, /WHERE status = 'active'/);
+  assert.match(server, /CREATE TABLE IF NOT EXISTS campaign_supports/);
+  assert.match(server, /CREATE TABLE IF NOT EXISTS support_attempts/);
+  assert.match(server, /UNIQUE \(creator_id, normalized_video_key\)/);
+  assert.match(server, /attempt_id TEXT UNIQUE/);
+  assert.match(server, /ensureLegacyCampaigns\(\)/);
+});
+
+test("campaign duplicate, activation, and support attempt protections are enforced", () => {
+  assert.match(server, /function normalizeCampaignVideoIdentity/);
+  assert.match(server, /DUPLICATE_VIDEO_CAMPAIGN/);
+  assert.match(server, /function activateCampaignForCreator/);
+  assert.match(server, /db\.exec\("BEGIN IMMEDIATE"\)/);
+  assert.match(server, /UPDATE campaigns\s+SET status = 'inactive'/);
+  assert.match(server, /UPDATE campaigns\s+SET status = 'active'/);
+  assert.match(server, /NO_ACTIVE_CAMPAIGN/);
+  assert.match(server, /CAMPAIGN_SUPPORT_LIMIT_REACHED/);
+  assert.match(server, /CAMPAIGN_CHANGED/);
+  assert.match(server, /SUPPORT_ATTEMPT_ALREADY_USED/);
+  assert.match(server, /AD_WATCH_TOO_SHORT/);
+});
+
+test("viewer support completion is assigned automatically to the active campaign", () => {
+  assert.match(viewer, /No active support island/);
+  assert.match(viewer, /You fully supported this video/);
+  assert.match(viewer, /campaignId:\s*activeCampaign\.id/);
+  assert.match(viewer, /supportAttemptId:\s*activeSupportAttemptId/);
+  assert.match(viewer, /campaignRemainingSupports <= 0/);
+  assert.doesNotMatch(viewer, /submitVideoAttribution/);
+});
+
+test("dashboard uses one permanent creator link for every source", () => {
+  assert.match(dashboard, /function getSupportIslandLink/);
+  assert.match(dashboard, /return getSupportIslandLink\(\)/);
+  assert.doesNotMatch(dashboard, /\/island\/"\s*\+/);
+  assert.doesNotMatch(dashboard, /\?view=supporter/);
+  assert.doesNotMatch(dashboard, /\$\{window\.location\.origin\}\/\$\{encodeURIComponent\(slug\)\}\/\$\{platform\}/);
 });
 
 test("browser debug logs are not leaking profile or response details", () => {
@@ -125,24 +171,6 @@ test("mobile uses the original well wish animation and stickers are disabled", (
   assert.match(server, /Sticker \$\{index \+ 1\}/);
   assert.match(viewer, /clearStickerContainer\(stickerRow\)/);
   assert.match(viewer, /hideReactionPicker\(\)/);
-});
-
-test("single video attribution is saved without prompting", () => {
-  assert.match(viewer, /attributionVideos\.length === 1/);
-  assert.match(viewer, /submitVideoAttribution\("selected_video", attributionVideos\[0\]\.id, \{ silent: true \}\)/);
-  assert.match(viewer, /submitVideoAttribution\("skipped", "", \{ silent: true \}\)/);
-});
-
-test("video attribution choice is remembered for the browser session", () => {
-  assert.match(viewer, /function getVideoAttributionMemoryKey/);
-  assert.match(viewer, /sessionStorage\.setItem\(\s*getVideoAttributionMemoryKey\(platform\)/);
-  assert.match(viewer, /function getReusableVideoAttributionChoice/);
-  assert.match(viewer, /attributionVideos\.some\(video => video\.id === choice\.selectedVideoId\)/);
-  assert.match(viewer, /const rememberedChoice = getReusableVideoAttributionChoice\(pendingAttributionSupport\.sourcePlatform\)/);
-  assert.match(viewer, /rememberedChoice\.attributionType/);
-  assert.match(viewer, /rememberChoice:\s*false/);
-  assert.match(viewer, /clearVideoAttributionChoice\(pendingAttributionSupport\.sourcePlatform\)/);
-  assert.match(viewer, /options\.rememberChoice !== false/);
 });
 
 test("privacy and terms pages are routed and linked", () => {

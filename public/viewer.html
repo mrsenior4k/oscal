@@ -2919,21 +2919,6 @@
   </div>
 </div>
 
-<div id="videoAttributionModal" class="wish-overlay hidden" aria-hidden="true">
-  <div class="attribution-card">
-    <h3>Which video made you want to support?</h3>
-    <p>This helps the creator see which posts are connecting with viewers.</p>
-    <div class="attribution-list" id="videoAttributionList"></div>
-    <div class="attribution-actions">
-      <button type="button" onclick="loadMoreAttributionVideos()">Another video</button>
-      <button type="button" onclick="submitVideoAttribution('creator_only')">Just supporting the creator</button>
-      <button type="button" onclick="submitVideoAttribution('skipped')">Skip</button>
-    </div>
-    <div class="attribution-note" id="videoAttributionNote"></div>
-  </div>
-</div>
-
-  
 </aside>
 </div>
 
@@ -3135,6 +3120,11 @@ let isCreatorViewingOwnIsland = false;
 let supporterLifetimeSupports = 0;
 let supporterCreatorSupports = 0;
 let creatorTotalSupports = 0;
+let activeCampaign = null;
+let campaignCompletedSupports = 0;
+let campaignRemainingSupports = 0;
+let campaignMaxSupports = 3;
+let activeSupportAttemptId = "";
 let supporterBadgeCollection = [];
 let equippedSupporterBadge = null;
 let selectedSupporterBadgeId = "";
@@ -3144,9 +3134,6 @@ let selectedSupporterPfpPreview = "";
 let stickerVideos = [];
 let stickerVideosLoaded = false;
 const stickerAssetVersion = "2026-06-24";
-let pendingAttributionSupport = null;
-let attributionVideos = [];
-let attributionVisibleCount = 5;
 const STICKERS_ENABLED = false;
 const LOW_POWER_STICKER_QUERY =
   "(max-width: 760px), (pointer: coarse), (prefers-reduced-motion: reduce)";
@@ -3294,11 +3281,41 @@ const videoId = params.get("video") || "main";
 const videoTitle = params.get("title") || "Main support page";
 const videoThumbnail = params.get("thumbnail") || "";
 const platform = params.get("platform") || "unknown";
-function loadContentCard() {
-  if (videoId === "main") return;
+function getCampaignPlatformLabel(value) {
+  return {
+    tiktok: "TikTok",
+    instagram: "Instagram",
+    youtube: "YouTube",
+    direct: "Direct",
+    other: "Other"
+  }[String(value || "").toLowerCase()] || "Video";
+}
 
+function loadContentCard() {
   const card = document.getElementById("contentCard");
   const thumb = document.getElementById("contentThumb");
+  const campaign = activeCampaign;
+
+  if (campaign) {
+    document.getElementById("contentTitleText").innerText = campaign.title || "Active campaign";
+    document.getElementById("contentPlatformText").innerText = getCampaignPlatformLabel(campaign.platform);
+
+    if (campaign.thumbnailUrl) {
+      thumb.src = campaign.thumbnailUrl;
+      thumb.style.display = "block";
+    } else {
+      thumb.removeAttribute("src");
+      thumb.style.display = "none";
+    }
+
+    card.style.display = "flex";
+    return;
+  }
+
+  if (videoId === "main") {
+    card.style.display = "none";
+    return;
+  }
 
   document.getElementById("contentTitleText").innerText = videoTitle;
   document.getElementById("contentPlatformText").innerText = platform;
@@ -3314,6 +3331,57 @@ function loadContentCard() {
 }
 
 loadContentCard();
+
+function getCreatorDisplayName() {
+  return creatorPageProfile?.displayName || creator || "This creator";
+}
+
+function updateCampaignSupportUi(options = {}) {
+  const watchBtn = document.getElementById("watchBtn");
+  const watchBtnLabel = watchBtn?.querySelector("span");
+  const rewardStrip = document.getElementById("rewardStrip");
+  const ownerBlocked = isCreatorViewingOwnIsland && !ownerSelfSupportTestMode;
+  const hasCampaign = Boolean(activeCampaign);
+  const fullySupported = hasCampaign && campaignRemainingSupports <= 0;
+
+  loadContentCard();
+
+  if (watchBtnLabel) {
+    if (ownerBlocked) {
+      watchBtnLabel.innerText = "Back to dashboard";
+    } else if (!hasCampaign) {
+      watchBtnLabel.innerText = "No active support island";
+    } else if (fullySupported) {
+      watchBtnLabel.innerText = "Fully supported";
+    } else {
+      watchBtnLabel.innerText = "Watch sponsor to support";
+    }
+  }
+
+  if (watchBtn) {
+    watchBtn.disabled = (!ownerBlocked && (!hasCampaign || fullySupported)) || adInProgress;
+  }
+
+  if (rewardStrip) {
+    rewardStrip.classList.toggle("hidden", ownerBlocked || !hasCampaign || fullySupported);
+  }
+
+  if (!options.skipStatus) {
+    if (!hasCampaign) {
+      setStatus(
+        `${getCreatorDisplayName()} does not currently have an active support island. Check back when they activate their next video.`,
+        "warning"
+      );
+    } else if (fullySupported) {
+      setStatus(
+        `You fully supported this video. Come back when ${getCreatorDisplayName()} activates another video.`,
+        "success"
+      );
+    } else {
+      setStatus(`${campaignRemainingSupports} of ${campaignMaxSupports} supports remaining.`, "success");
+    }
+  }
+}
     
 
     async function loadCreatorProfile() {
@@ -3329,11 +3397,15 @@ loadContentCard();
   }
 
   creatorPageProfile = profile;
+  activeCampaign = profile.activeCampaign || activeCampaign;
   updateCreatorOwnerMode();
-  document.getElementById("headlineName").innerText = profile.displayName;
+  document.getElementById("headlineName").innerText = activeCampaign
+    ? `${profile.displayName}'s video`
+    : profile.displayName;
 
   const avatar = document.getElementById("avatar");
   avatar.innerHTML = `<img src="${profile.profileImage}" alt="${profile.displayName}">`;
+  updateCampaignSupportUi({ skipStatus: true });
 }
 
 loadCreatorProfile();
@@ -3453,21 +3525,7 @@ function loggedInCreatorOwnsIsland() {
 
 function updateCreatorOwnerMode() {
   isCreatorViewingOwnIsland = loggedInCreatorOwnsIsland();
-  const ownerBlocked = isCreatorViewingOwnIsland && !ownerSelfSupportTestMode;
-
-  const watchBtn = document.getElementById("watchBtn");
-  const watchBtnLabel = watchBtn?.querySelector("span");
-  const rewardStrip = document.getElementById("rewardStrip");
-
-  if (watchBtnLabel) {
-    watchBtnLabel.innerText = ownerBlocked
-      ? "Back to dashboard"
-      : "Watch sponsor to support";
-  }
-
-  if (rewardStrip) {
-    rewardStrip.classList.toggle("hidden", ownerBlocked);
-  }
+  updateCampaignSupportUi({ skipStatus: true });
 }
 
 function handleMainAction() {
@@ -5328,7 +5386,14 @@ body: JSON.stringify({
   serverHasSupporterProfile = usingCreatorIdentity || Boolean(data.hasProfile);
   supporterLifetimeSupports = Number(data.lifetimeSupports || 0);
   supporterCreatorSupports = Number(data.creatorSupports || 0);
+  activeCampaign = data.activeCampaign || null;
+  campaignCompletedSupports = Number(data.completedSupports || 0);
+  campaignRemainingSupports = Number(data.remainingSupports || 0);
+  campaignMaxSupports = Number(data.maxSupports || 3);
   setSupporterBadgeState(data.badges, data.equippedBadge);
+  document.getElementById("headlineName").innerText = activeCampaign
+    ? `${getCreatorDisplayName()}'s video`
+    : getCreatorDisplayName();
 
   if (usingCreatorIdentity) {
     supporterProfile = creatorIdentity;
@@ -5344,6 +5409,7 @@ body: JSON.stringify({
   }
 
   updateSupporterMenu();
+  updateCampaignSupportUi();
 
   if (data.wait && data.wait > 0) {
     cooldownUntil = Date.now() + data.wait * 1000;
@@ -5375,251 +5441,6 @@ body: JSON.stringify({
       }
     }
 
-    function getAttributionPlatformLabel(platform) {
-      return {
-        tiktok: "TikTok",
-        instagram: "Instagram",
-        youtube: "YouTube",
-        direct: "Direct"
-      }[platform] || "Direct";
-    }
-
-    function formatAttributionDate(value) {
-      const time = Number(value || 0);
-      if (!time) return "Recent";
-
-      return new Intl.DateTimeFormat(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric"
-      }).format(new Date(time));
-    }
-
-    function clearAttributionList() {
-      const list = document.getElementById("videoAttributionList");
-      if (list) list.innerHTML = "";
-    }
-
-    function getVideoAttributionMemoryKey(platform = sourcePlatform) {
-      const cleanPlatform = allowedSourcePlatforms.has(platform) ? platform : "direct";
-      return `videoAttributionChoice:${creator}:${cleanPlatform}`;
-    }
-
-    function readVideoAttributionChoice(platform = sourcePlatform) {
-      try {
-        return JSON.parse(sessionStorage.getItem(getVideoAttributionMemoryKey(platform)) || "null");
-      } catch (_) {
-        return null;
-      }
-    }
-
-    function rememberVideoAttributionChoice(attributionType, selectedVideoId = "", platform = sourcePlatform) {
-      try {
-        sessionStorage.setItem(
-          getVideoAttributionMemoryKey(platform),
-          JSON.stringify({
-            attributionType,
-            selectedVideoId,
-            savedAt: Date.now()
-          })
-        );
-      } catch (_) {}
-    }
-
-    function clearVideoAttributionChoice(platform = sourcePlatform) {
-      try {
-        sessionStorage.removeItem(getVideoAttributionMemoryKey(platform));
-      } catch (_) {}
-    }
-
-    function getReusableVideoAttributionChoice(platform = sourcePlatform) {
-      const choice = readVideoAttributionChoice(platform);
-      if (!choice || !choice.attributionType) return null;
-
-      if (choice.attributionType === "selected_video") {
-        const stillEligible = attributionVideos.some(video => video.id === choice.selectedVideoId);
-        return stillEligible ? choice : null;
-      }
-
-      return ["creator_only", "skipped"].includes(choice.attributionType)
-        ? choice
-        : null;
-    }
-
-    function renderVideoAttributionOptions() {
-      const list = document.getElementById("videoAttributionList");
-      if (!list) return;
-
-      list.innerHTML = "";
-      const visibleVideos = attributionVideos.slice(0, attributionVisibleCount);
-
-      if (!visibleVideos.length) {
-        const empty = document.createElement("p");
-        empty.className = "lead";
-        empty.innerText = "No videos are available to select.";
-        list.appendChild(empty);
-        return;
-      }
-
-      visibleVideos.forEach(video => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "attribution-option";
-        button.addEventListener("click", () => {
-          submitVideoAttribution("selected_video", video.id);
-        });
-
-        if (video.thumbnailUrl) {
-          const img = document.createElement("img");
-          img.className = "attribution-thumb";
-          img.src = video.thumbnailUrl;
-          img.alt = "";
-          button.appendChild(img);
-        } else {
-          const placeholder = document.createElement("div");
-          placeholder.className = "attribution-thumb-placeholder";
-          placeholder.innerText = getAttributionPlatformLabel(video.platform);
-          button.appendChild(placeholder);
-        }
-
-        const copy = document.createElement("div");
-        const title = document.createElement("strong");
-        title.innerText = video.title || "Untitled video";
-        const meta = document.createElement("span");
-        meta.innerText = `${getAttributionPlatformLabel(video.platform)} • ${formatAttributionDate(video.publishedAt || video.createdAt)}`;
-        copy.append(title, meta);
-        button.appendChild(copy);
-        list.appendChild(button);
-      });
-    }
-
-    async function showVideoAttributionPrompt(completeData) {
-      if (!completeData?.supportId) return;
-
-      pendingAttributionSupport = {
-        supportId: completeData.supportId,
-        sourcePlatform: completeData.sourcePlatform || sourcePlatform
-      };
-      attributionVideos = [];
-      attributionVisibleCount = 5;
-
-      const modal = document.getElementById("videoAttributionModal");
-      const note = document.getElementById("videoAttributionNote");
-      if (note) note.innerText = "";
-      clearAttributionList();
-
-      try {
-        const res = await fetch(
-          `/support/eligible-videos?creator=${encodeURIComponent(creator)}&platform=${encodeURIComponent(pendingAttributionSupport.sourcePlatform)}`
-        );
-        const data = await res.json();
-        attributionVideos = Array.isArray(data.videos) ? data.videos : [];
-      } catch (err) {
-        attributionVideos = [];
-      }
-
-      const rememberedChoice = getReusableVideoAttributionChoice(pendingAttributionSupport.sourcePlatform);
-      if (rememberedChoice) {
-        await submitVideoAttribution(
-          rememberedChoice.attributionType,
-          rememberedChoice.selectedVideoId || "",
-          { silent: true, rememberChoice: false }
-        );
-        return;
-      }
-
-      if (readVideoAttributionChoice(pendingAttributionSupport.sourcePlatform)) {
-        clearVideoAttributionChoice(pendingAttributionSupport.sourcePlatform);
-      }
-
-      if (attributionVideos.length === 1) {
-        await submitVideoAttribution("selected_video", attributionVideos[0].id, { silent: true });
-        return;
-      }
-
-      if (!attributionVideos.length) {
-        await submitVideoAttribution("skipped", "", { silent: true });
-        return;
-      }
-
-      renderVideoAttributionOptions();
-
-      if (modal) {
-        modal.classList.remove("hidden");
-        modal.setAttribute("aria-hidden", "false");
-      }
-    }
-
-    function hideVideoAttributionPrompt() {
-      const modal = document.getElementById("videoAttributionModal");
-      if (modal) {
-        modal.classList.add("hidden");
-        modal.setAttribute("aria-hidden", "true");
-      }
-      pendingAttributionSupport = null;
-    }
-
-    function loadMoreAttributionVideos() {
-      if (attributionVisibleCount >= attributionVideos.length) {
-        const note = document.getElementById("videoAttributionNote");
-        if (note) note.innerText = "No more videos are available for this platform.";
-        return;
-      }
-
-      attributionVisibleCount += 5;
-      renderVideoAttributionOptions();
-    }
-
-    async function submitVideoAttribution(attributionType, selectedVideoId = "", options = {}) {
-      if (!pendingAttributionSupport) {
-        hideVideoAttributionPrompt();
-        return;
-      }
-
-      const note = document.getElementById("videoAttributionNote");
-      if (note && !options.silent) note.innerText = "Saving...";
-
-      try {
-        const res = await fetch("/support/attribute-video", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            creator,
-            supportId: pendingAttributionSupport.supportId,
-            anonId,
-            fingerprint,
-            attributionType,
-            selectedVideoId
-          })
-        });
-        const data = await res.json();
-
-        if (!data.success) {
-          throw new Error(data.message || "Could not save selection.");
-        }
-
-        if (options.rememberChoice !== false) {
-          rememberVideoAttributionChoice(
-            attributionType,
-            selectedVideoId,
-            pendingAttributionSupport.sourcePlatform
-          );
-        }
-
-        hideVideoAttributionPrompt();
-      } catch (err) {
-        if (options.silent) {
-          pendingAttributionSupport = null;
-          return;
-        }
-
-        if (note) note.innerText = err.message || "Could not save selection.";
-      }
-    }
-
     function finishSuccessfulSupport(completeData) {
       cooldownUntil = Date.now() + 30000;
 
@@ -5629,6 +5450,11 @@ body: JSON.stringify({
       const earnings = Number(
         completeData.earnings ?? supports * 0.05
       );
+      activeCampaign = completeData.activeCampaign || activeCampaign;
+      campaignCompletedSupports = Number(completeData.completedSupports || campaignCompletedSupports);
+      campaignRemainingSupports = Number(completeData.remainingSupports || campaignRemainingSupports);
+      campaignMaxSupports = Number(completeData.maxSupports || campaignMaxSupports);
+      activeSupportAttemptId = "";
 
       updateStatCards(supports, earnings);
 
@@ -5653,7 +5479,7 @@ body: JSON.stringify({
       );
 
       showReactionPicker(supporterCreatorSupports);
-      showVideoAttributionPrompt(completeData);
+      updateCampaignSupportUi({ skipStatus: true });
 
       checkSupportStatus();
       triggerWellGlow(4500);
@@ -5926,6 +5752,7 @@ body: JSON.stringify({
       hideSponsorAd();
       resetProgressBar();
       adInProgress = false;
+      activeSupportAttemptId = "";
 
       if (activeSponsorButton) {
         activeSponsorButton.disabled = false;
@@ -5979,6 +5806,16 @@ body: JSON.stringify({
     return;
   }
 
+  if (!activeCampaign) {
+    updateCampaignSupportUi();
+    return;
+  }
+
+  if (campaignRemainingSupports <= 0) {
+    updateCampaignSupportUi();
+    return;
+  }
+
   const now = Date.now();
 
   if (now < cooldownUntil) {
@@ -6008,6 +5845,7 @@ body: JSON.stringify({
         supporterView: forceSupporterView,
         selfSupportTest: selfSupportTestMode,
         sourcePlatform,
+        campaignId: activeCampaign.id,
         videoId,
         videoTitle,
         videoThumbnail,
@@ -6029,7 +5867,13 @@ body: JSON.stringify({
       return;
     }
 
+    activeSupportAttemptId = startData.supportAttemptId || "";
+    activeCampaign = startData.activeCampaign || activeCampaign;
+    campaignCompletedSupports = Number(startData.completedSupports || campaignCompletedSupports);
+    campaignRemainingSupports = Number(startData.remainingSupports || campaignRemainingSupports);
+    campaignMaxSupports = Number(startData.maxSupports || campaignMaxSupports);
     adInProgress = true;
+    updateCampaignSupportUi({ skipStatus: true });
     stopCountdown();
     setStatus("Preparing sponsor flow...");
     playSponsorVideo(btn);
@@ -6037,6 +5881,7 @@ body: JSON.stringify({
     console.error("startAd failed:", err);
     btn.disabled = false;
     adInProgress = false;
+    activeSupportAttemptId = "";
     resetProgressBar();
     setStatus("Support failed. Server or connection issue.", "danger");
   }
@@ -6273,6 +6118,8 @@ body: JSON.stringify({
         supporterView: forceSupporterView,
         selfSupportTest: selfSupportTestMode,
         sourcePlatform,
+        supportAttemptId: activeSupportAttemptId,
+        campaignId: activeCampaign?.id || "",
 
         supporterName:
           serverHasSupporterProfile ? supporterProfile?.name || "" : "",
@@ -6289,6 +6136,12 @@ body: JSON.stringify({
     const completeData = await readJsonResponse(completeRes, "AD COMPLETE");
 
     if (!completeData.success) {
+      activeSupportAttemptId = "";
+      activeCampaign = completeData.activeCampaign || activeCampaign;
+      campaignCompletedSupports = Number(completeData.completedSupports || campaignCompletedSupports);
+      campaignRemainingSupports = Number(completeData.remainingSupports || campaignRemainingSupports);
+      campaignMaxSupports = Number(completeData.maxSupports || campaignMaxSupports);
+      updateCampaignSupportUi({ skipStatus: true });
       setStatus(completeData.message || "Support failed.", "danger");
 
       if (completeData.wait) {
@@ -6299,6 +6152,12 @@ body: JSON.stringify({
       return;
     }
 
+    activeCampaign = completeData.activeCampaign || activeCampaign;
+    campaignCompletedSupports = Number(completeData.completedSupports || campaignCompletedSupports);
+    campaignRemainingSupports = Number(completeData.remainingSupports || campaignRemainingSupports);
+    campaignMaxSupports = Number(completeData.maxSupports || campaignMaxSupports);
+    activeSupportAttemptId = "";
+    updateCampaignSupportUi({ skipStatus: true });
     playWishAnimationOrFinish(completeData);
 
   } catch (err) {
@@ -6306,8 +6165,13 @@ body: JSON.stringify({
     setStatus("Support failed. Server or connection issue.", "danger");
     resetProgressBar();
     adInProgress = false;
+    activeSupportAttemptId = "";
   } finally {
-    btn.disabled = false;
+    if (!activeCampaign || campaignRemainingSupports <= 0 || adInProgress) {
+      updateCampaignSupportUi({ skipStatus: true });
+    } else {
+      btn.disabled = false;
+    }
   }
 }
 
