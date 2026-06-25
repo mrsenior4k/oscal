@@ -966,7 +966,7 @@ function canonicalizeStoredCreatorStats() {
 canonicalizeStoredCreatorStats();
 
 // ---------- Config ----------
-const MAX_SUPPORTS_PER_DAY = 99;
+const MAX_SUPPORTS_PER_DAY = 3;
 const COOLDOWN_MS = 30_000; // 30 seconds
 const REWARD_PER_SUPPORT = 0.05;
 const MIN_AD_WATCH_MS = 14_000; // basic backend validation
@@ -1847,21 +1847,11 @@ debugLog("EVENT RECEIVED:", {
     req.session?.viewerSourcePlatforms?.[creatorKey],
     "direct"
   );
-  const selfSupportTestMode =
-    selfSupportTest === true ||
-    selfSupportTest === "true" ||
-    selfSupportTest === "1";
-  const supporterViewMode =
-    supporterView === true ||
-    supporterView === "true" ||
-    req.query.view === "supporter";
   const isCreatorOwnerRequest =
     isLoggedInCreatorForSlug(req, creator) ||
     isKnownCreatorOwnerDevice(req, creator, deviceFamily);
-  const allowSelfSupportTest =
-    selfSupportTestMode || (supporterViewMode && isCreatorOwnerRequest);
 
-  if (isCreatorOwnerRequest && !allowSelfSupportTest) {
+  if (isCreatorOwnerRequest) {
     return res.json({
       success: false,
       message: "You cannot support your own island."
@@ -1917,7 +1907,7 @@ debugLog("EVENT RECEIVED:", {
   const userData = userProgress[deviceProgressKey].days[today];
 
   // ---------- Anti-bot / self-support ----------
-  if (deviceProgressKey === hashFingerprint(creator) && !allowSelfSupportTest) {
+  if (deviceProgressKey === hashFingerprint(creator)) {
     return res.json({ success: false, message: 'Cannot support yourself' });
   }
 

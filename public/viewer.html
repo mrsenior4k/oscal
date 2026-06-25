@@ -3116,9 +3116,8 @@ const creator = decodeURIComponent(rawCreator || "Alex").trim();
     const sourcePlatform = allowedSourcePlatforms.has(viewerBootstrap.sourcePlatform)
       ? viewerBootstrap.sourcePlatform
       : "direct";
-    const selfSupportTestMode =
-      params.get("selftest") === "1" || params.get("selftest") === "true";
-    const ownerSelfSupportTestMode = selfSupportTestMode || forceSupporterView;
+    const selfSupportTestMode = false;
+    const ownerSelfSupportTestMode = false;
     let anonId = localStorage.getItem("anonId");
 
 if (!anonId) {

@@ -34,14 +34,15 @@ test("owner-device self-support guard is wired through viewer and dashboard", ()
   assert.match(dashboard, /getDashboardDeviceFamily/);
 });
 
-test("owner self-support test mode is URL gated", () => {
-  assert.match(viewer, /params\.get\("selftest"\)/);
-  assert.match(viewer, /selfSupportTest:\s*selfSupportTestMode/);
-  assert.match(viewer, /ownerSelfSupportTestMode\s*=\s*selfSupportTestMode\s*\|\|\s*forceSupporterView/);
+test("launch support limits and owner self-support block are restored", () => {
+  assert.match(server, /const MAX_SUPPORTS_PER_DAY = 3/);
+  assert.match(viewer, /const selfSupportTestMode = false/);
+  assert.match(viewer, /const ownerSelfSupportTestMode = false/);
   assert.match(viewer, /isCreatorViewingOwnIsland\s*&&\s*!ownerSelfSupportTestMode/);
-  assert.match(server, /supporterViewMode\s*&&\s*isCreatorOwnerRequest/);
-  assert.match(server, /isCreatorOwnerRequest\s*&&\s*!allowSelfSupportTest/);
-  assert.match(server, /hashFingerprint\(creator\)\s*&&\s*!allowSelfSupportTest/);
+  assert.match(server, /if \(isCreatorOwnerRequest\)/);
+  assert.match(server, /deviceProgressKey === hashFingerprint\(creator\)/);
+  assert.doesNotMatch(server, /allowSelfSupportTest/);
+  assert.doesNotMatch(server, /supporterViewMode\s*&&\s*isCreatorOwnerRequest/);
 });
 
 test("creator login entrypoint is platform neutral", () => {
