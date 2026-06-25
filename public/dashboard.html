@@ -687,7 +687,7 @@ function renderCampaigns(campaigns = []) {
   }
 
   list.innerHTML = visibleCampaigns.map(campaign => {
-    const canActivate = campaign.status !== "active" && campaign.status !== "archived";
+    const canActivate = campaign.status !== "active";
     const canDeactivate = campaign.status === "active";
 
     return `

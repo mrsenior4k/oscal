@@ -68,6 +68,7 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(dashboard, /Campaign breakdown/);
   assert.match(dashboard, /Create campaign/);
   assert.match(dashboard, /Make active/);
+  assert.match(dashboard, /const canActivate = campaign\.status !== "active";/);
   assert.match(dashboard, /Deactivate/);
   assert.match(dashboard, /Thumbnail image upload/);
   assert.match(dashboard, /function isLegacyCampaign/);
@@ -122,6 +123,7 @@ test("campaign duplicate, activation, and support attempt protections are enforc
   assert.match(server, /db\.exec\("BEGIN IMMEDIATE"\)/);
   assert.match(server, /UPDATE campaigns\s+SET status = 'inactive'/);
   assert.match(server, /UPDATE campaigns\s+SET status = 'active'/);
+  assert.doesNotMatch(server, /function activateCampaignForCreator[\s\S]*?CAMPAIGN_ARCHIVED[\s\S]*?function deactivateCampaignForCreator/);
   assert.match(server, /NO_ACTIVE_CAMPAIGN/);
   assert.match(server, /CAMPAIGN_SUPPORT_LIMIT_REACHED/);
   assert.match(server, /CAMPAIGN_CHANGED/);

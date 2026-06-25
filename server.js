@@ -1784,12 +1784,6 @@ function activateCampaignForCreator(creatorId, campaignId) {
     throw err;
   }
 
-  if (campaign.status === "archived") {
-    const err = new Error("CAMPAIGN_ARCHIVED");
-    err.code = "CAMPAIGN_ARCHIVED";
-    throw err;
-  }
-
   const timestamp = nowIso();
 
   db.exec("BEGIN IMMEDIATE");
