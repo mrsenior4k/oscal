@@ -71,6 +71,10 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(dashboard, /Deactivate/);
   assert.match(dashboard, /Archive/);
   assert.match(dashboard, /Thumbnail image upload/);
+  assert.match(dashboard, /function isLegacyCampaign/);
+  assert.match(dashboard, /No active video campaign/);
+  assert.match(dashboard, /No video campaigns yet/);
+  assert.match(dashboard, /filter\(campaign => !isLegacyCampaign\(campaign\)\)/);
   assert.doesNotMatch(dashboard, /Create tracked content link/);
   assert.doesNotMatch(dashboard, /contentThumbnailFile/);
   assert.doesNotMatch(server, /\/api\/dashboard\/thumbnail/);
@@ -101,6 +105,8 @@ test("campaign tables and active campaign uniqueness are migrated in SQLite", ()
   assert.match(server, /CREATE TABLE IF NOT EXISTS support_attempts/);
   assert.match(server, /UNIQUE \(creator_id, normalized_video_key\)/);
   assert.match(server, /attempt_id TEXT UNIQUE/);
+  assert.match(server, /function isLegacyCampaign/);
+  assert.match(server, /normalized_video_key NOT LIKE 'legacy:%'/);
   assert.match(server, /ensureLegacyCampaigns\(\)/);
 });
 
@@ -114,6 +120,8 @@ test("campaign duplicate, activation, and support attempt protections are enforc
   assert.match(server, /NO_ACTIVE_CAMPAIGN/);
   assert.match(server, /CAMPAIGN_SUPPORT_LIMIT_REACHED/);
   assert.match(server, /CAMPAIGN_CHANGED/);
+  assert.match(server, /LEGACY_CAMPAIGN_LOCKED/);
+  assert.match(server, /Historical support totals cannot be managed as campaigns/);
   assert.match(server, /SUPPORT_ATTEMPT_ALREADY_USED/);
   assert.match(server, /AD_WATCH_TOO_SHORT/);
 });

@@ -646,26 +646,30 @@ function campaignMetaLine(campaign) {
   ].join(" • ");
 }
 
+function isLegacyCampaign(campaign) {
+  return String(campaign?.normalizedVideoKey || "").startsWith("legacy:");
+}
+
 function renderActiveCampaign(campaign) {
   const card = document.getElementById("activeCampaignCard");
-  activeCampaignCache = campaign || null;
+  activeCampaignCache = campaign && !isLegacyCampaign(campaign) ? campaign : null;
 
-  if (!campaign) {
-    card.innerHTML = `<p class="empty">No active campaign. Create or activate one before sharing your island.</p>`;
+  if (!activeCampaignCache) {
+    card.innerHTML = `<p class="empty">No active video campaign. Create one below, then make it active.</p>`;
     return;
   }
 
   card.innerHTML = `
     <div class="video-item">
-      ${renderCampaignThumb(campaign)}
+      ${renderCampaignThumb(activeCampaignCache)}
       <div>
-        <strong>${escapeHtml(campaign.title)}</strong>
-        <span>Active support island • ${Number(campaign.totalSupports || 0)} supports • ${formatMoney(campaign.totalEarnings)} earned</span>
-        <span>Activated ${escapeHtml(formatCampaignDate(campaign.activatedAt))}</span>
+        <strong>${escapeHtml(activeCampaignCache.title)}</strong>
+        <span>Active support island • ${Number(activeCampaignCache.totalSupports || 0)} supports • ${formatMoney(activeCampaignCache.totalEarnings)} earned</span>
+        <span>Activated ${escapeHtml(formatCampaignDate(activeCampaignCache.activatedAt))}</span>
       </div>
       <div class="video-actions">
-        <a class="mini-btn" href="${escapeHtml(campaign.videoUrl)}" target="_blank" rel="noopener">View video</a>
-        <button class="mini-btn danger" type="button" onclick="deactivateCampaign('${escapeHtml(campaign.id)}')">Deactivate</button>
+        <a class="mini-btn" href="${escapeHtml(activeCampaignCache.videoUrl)}" target="_blank" rel="noopener">View video</a>
+        <button class="mini-btn danger" type="button" onclick="deactivateCampaign('${escapeHtml(activeCampaignCache.id)}')">Deactivate</button>
       </div>
     </div>
   `;
@@ -674,14 +678,15 @@ function renderActiveCampaign(campaign) {
 function renderCampaigns(campaigns = []) {
   campaignsCache = Array.isArray(campaigns) ? campaigns : [];
   const list = document.getElementById("campaignsList");
+  const visibleCampaigns = campaignsCache.filter(campaign => !isLegacyCampaign(campaign));
 
-  if (!campaignsCache.length) {
-    list.innerHTML = `<p class="empty">No campaigns yet.</p>`;
-    renderCampaignBreakdown([]);
+  if (!visibleCampaigns.length) {
+    list.innerHTML = `<p class="empty">No video campaigns yet.</p>`;
+    renderCampaignBreakdown(campaignsCache);
     return;
   }
 
-  list.innerHTML = campaignsCache.map(campaign => {
+  list.innerHTML = visibleCampaigns.map(campaign => {
     const canActivate = campaign.status !== "active" && campaign.status !== "archived";
     const canDeactivate = campaign.status === "active";
 
@@ -710,6 +715,7 @@ function renderCampaigns(campaigns = []) {
 function renderCampaignBreakdown(campaigns = []) {
   const list = document.getElementById("campaignBreakdownList");
   const visible = (Array.isArray(campaigns) ? campaigns : [])
+    .filter(campaign => !isLegacyCampaign(campaign))
     .filter(campaign => campaign.status !== "archived" || Number(campaign.totalSupports || 0) > 0)
     .sort((a, b) => Number(b.totalSupports || 0) - Number(a.totalSupports || 0));
 

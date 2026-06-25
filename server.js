@@ -1510,7 +1510,8 @@ function campaignErrorPayload(err) {
     AD_WATCH_TOO_SHORT: 400,
     SUPPORT_ATTEMPT_ALREADY_USED: 409,
     RATE_LIMITED: 429,
-    SELF_SUPPORT_NOT_ALLOWED: 403
+    SELF_SUPPORT_NOT_ALLOWED: 403,
+    LEGACY_CAMPAIGN_LOCKED: 409
   };
   const messageByCode = {
     NO_ACTIVE_CAMPAIGN: "This creator does not currently have an active support island.",
@@ -1527,7 +1528,8 @@ function campaignErrorPayload(err) {
     AD_WATCH_TOO_SHORT: "Ad not fully watched.",
     SUPPORT_ATTEMPT_ALREADY_USED: "This support was already completed.",
     RATE_LIMITED: "Too many attempts. Try again soon.",
-    SELF_SUPPORT_NOT_ALLOWED: "You cannot support your own island."
+    SELF_SUPPORT_NOT_ALLOWED: "You cannot support your own island.",
+    LEGACY_CAMPAIGN_LOCKED: "Historical support totals cannot be managed as campaigns."
   };
 
   return {
@@ -1586,6 +1588,10 @@ function campaignRowToJson(row) {
   };
 }
 
+function isLegacyCampaign(campaign) {
+  return String(campaign?.normalizedVideoKey || campaign?.normalized_video_key || "").startsWith("legacy:");
+}
+
 function getCampaignById(campaignId) {
   const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(String(campaignId || ""));
   return campaignRowToJson(row);
@@ -1594,7 +1600,7 @@ function getCampaignById(campaignId) {
 function getActiveCampaignForCreator(creatorId) {
   const row = db.prepare(`
     SELECT * FROM campaigns
-    WHERE creator_id = ? AND status = 'active'
+    WHERE creator_id = ? AND status = 'active' AND normalized_video_key NOT LIKE 'legacy:%'
     ORDER BY activated_at DESC
     LIMIT 1
   `).get(creatorId);
@@ -1754,6 +1760,12 @@ function activateCampaignForCreator(creatorId, campaignId) {
     throw err;
   }
 
+  if (isLegacyCampaign(campaign)) {
+    const err = new Error("LEGACY_CAMPAIGN_LOCKED");
+    err.code = "LEGACY_CAMPAIGN_LOCKED";
+    throw err;
+  }
+
   if (campaign.status === "active") {
     const err = new Error("CAMPAIGN_ALREADY_ACTIVE");
     err.code = "CAMPAIGN_ALREADY_ACTIVE";
@@ -1804,6 +1816,12 @@ function deactivateCampaignForCreator(creatorId, campaignId) {
     throw err;
   }
 
+  if (isLegacyCampaign(campaign)) {
+    const err = new Error("LEGACY_CAMPAIGN_LOCKED");
+    err.code = "LEGACY_CAMPAIGN_LOCKED";
+    throw err;
+  }
+
   if (campaign.status === "archived") {
     const err = new Error("CAMPAIGN_ARCHIVED");
     err.code = "CAMPAIGN_ARCHIVED";
@@ -1832,6 +1850,12 @@ function archiveCampaignForCreator(creatorId, campaignId) {
   if (campaign.creatorId !== creatorId) {
     const err = new Error("CAMPAIGN_NOT_OWNED");
     err.code = "CAMPAIGN_NOT_OWNED";
+    throw err;
+  }
+
+  if (isLegacyCampaign(campaign)) {
+    const err = new Error("LEGACY_CAMPAIGN_LOCKED");
+    err.code = "LEGACY_CAMPAIGN_LOCKED";
     throw err;
   }
 
@@ -2899,7 +2923,7 @@ app.get('/count/:creator', enforceRateLimit("count", 60_000, 120), (req, res) =>
     .sort((a, b) => b.supports - a.supports)
     .slice(0, 5);
   const campaigns = getCampaignsForCreator(creatorKey);
-  const activeCampaign = campaigns.find(campaign => campaign.status === "active") || null;
+  const activeCampaign = getActiveCampaignForCreator(creatorKey);
   const campaignTotals = campaigns.reduce((totals, campaign) => {
     totals.supports += Number(campaign.totalSupports || 0);
     totals.earnings += Number(campaign.totalEarnings || 0);
@@ -3133,13 +3157,14 @@ app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
     .slice(0, 5);
   const attributionStats = getVideoAttributionStats(creator);
   const campaigns = getCampaignsForCreator(creator);
-  const activeCampaign = campaigns.find(campaign => campaign.status === "active") || null;
+  const activeCampaign = getActiveCampaignForCreator(creator);
   const campaignTotals = campaigns.reduce((totals, campaign) => {
     totals.supports += Number(campaign.totalSupports || 0);
     totals.earnings += Number(campaign.totalEarnings || 0);
     return totals;
   }, { supports: 0, earnings: 0 });
   const campaignVideos = campaigns
+    .filter(campaign => !isLegacyCampaign(campaign))
     .filter(campaign => campaign.status !== "archived" || Number(campaign.totalSupports || 0) > 0)
     .sort((a, b) => Number(b.totalSupports || 0) - Number(a.totalSupports || 0));
 
