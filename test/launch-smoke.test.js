@@ -120,8 +120,12 @@ test("campaign tables and active campaign uniqueness are migrated in SQLite", ()
   assert.match(server, /function getCampaignOptionsForCreator/);
   assert.match(server, /function getSupportCampaignForCreator/);
   assert.match(server, /function getCampaignViewerKey\(req, fingerprint, deviceFamily = ""\)/);
+  assert.match(server, /function getCampaignDeviceFamily/);
+  assert.match(server, /\[width, height\]\.sort/);
+  assert.match(server, /function getLegacyCampaignViewerKey/);
   assert.match(server, /campaign-viewer-device/);
   assert.match(server, /function getCampaignViewerKeys/);
+  assert.match(server, /getLegacyCampaignViewerKey\(req, deviceFamily\)/);
   assert.match(server, /viewer_key IN \(\$\{placeholders\}\)/);
   assert.match(server, /normalized_video_key NOT LIKE 'legacy:%'/);
   assert.match(server, /ensureLegacyCampaigns\(\)/);

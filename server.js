@@ -1666,8 +1666,33 @@ function getCreatorCampaignTotals(creatorId) {
   }, { supports: 0, earnings: 0 });
 }
 
-function getCampaignViewerKey(req, fingerprint, deviceFamily = "") {
+function getCampaignDeviceFamily(deviceFamily = "") {
   const family = getOwnerDeviceFamily(deviceFamily);
+  if (!family) return "";
+
+  const parts = family.split("|").map(part => part.trim());
+  const width = Number(parts[0] || 0);
+  const height = Number(parts[1] || 0);
+  const colorDepth = Number(parts[2] || 0);
+  const timeZone = parts[parts.length - 1] || "";
+
+  if (width > 0 && height > 0 && timeZone) {
+    const dimensions = [width, height].sort((a, b) => a - b).join("x");
+    return [dimensions, colorDepth || "", timeZone].join("|");
+  }
+
+  return family;
+}
+
+function getLegacyCampaignViewerKey(req, deviceFamily = "") {
+  const family = getOwnerDeviceFamily(deviceFamily);
+  if (!family) return "";
+
+  return hashFingerprint(`campaign-viewer-device|${getClientIp(req)}|${family}`);
+}
+
+function getCampaignViewerKey(req, fingerprint, deviceFamily = "") {
+  const family = getCampaignDeviceFamily(deviceFamily);
 
   if (family) {
     return hashFingerprint(`campaign-viewer-device|${getClientIp(req)}|${family}`);
@@ -1679,6 +1704,7 @@ function getCampaignViewerKey(req, fingerprint, deviceFamily = "") {
 function getCampaignViewerKeys(req, fingerprint, deviceFamily = "") {
   return Array.from(new Set([
     getCampaignViewerKey(req, fingerprint, deviceFamily),
+    getLegacyCampaignViewerKey(req, deviceFamily),
     getDeviceProgressKey(req, fingerprint)
   ].filter(Boolean)));
 }
