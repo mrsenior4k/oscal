@@ -129,6 +129,8 @@ test("dashboard uses one permanent creator link for every source", () => {
   assert.doesNotMatch(dashboard, /\/island\/"\s*\+/);
   assert.doesNotMatch(dashboard, /\?view=supporter/);
   assert.doesNotMatch(dashboard, /\$\{window\.location\.origin\}\/\$\{encodeURIComponent\(slug\)\}\/\$\{platform\}/);
+  assert.match(server, /app\.get\("\/:creator", \(req, res\) => \{\s*sendViewerPage\(req, res, "direct"\);\s*\}\);/);
+  assert.doesNotMatch(server, /app\.get\("\/:creator",[\s\S]*?res\.redirect\("\/dashboard"\)/);
 });
 
 test("browser debug logs are not leaking profile or response details", () => {

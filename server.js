@@ -3641,10 +3641,6 @@ app.get("/:creator/:sourcePlatform", (req, res, next) => {
 });
 
 app.get("/:creator", (req, res) => {
-  if (isLegacyCreatorSlug(req.params.creator)) {
-    return res.redirect("/dashboard");
-  }
-
   sendViewerPage(req, res, "direct");
 });
 
