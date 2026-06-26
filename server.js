@@ -1154,6 +1154,7 @@ const ATTRIBUTION_TYPES = new Set(["selected_video", "creator_only", "skipped"])
 const ATTRIBUTION_WINDOW_MS = 30 * 60 * 1000;
 const METADATA_FETCH_TIMEOUT_MS = 6500;
 const MAX_THUMBNAIL_UPLOAD_BYTES = 3 * 1024 * 1024;
+const DIRECT_SUPPORT_CAMPAIGN_KEY = "__direct_support__";
 const INSTAGRAM_OEMBED_ACCESS_TOKEN =
   process.env.INSTAGRAM_OEMBED_ACCESS_TOKEN ||
   process.env.META_OEMBED_ACCESS_TOKEN ||
@@ -1658,6 +1659,10 @@ function isLegacyCampaign(campaign) {
   return String(campaign?.normalizedVideoKey || campaign?.normalized_video_key || "").startsWith("legacy:");
 }
 
+function isDirectSupportCampaign(campaign) {
+  return String(campaign?.normalizedVideoKey || campaign?.normalized_video_key || "").startsWith("direct:");
+}
+
 function getCampaignById(campaignId) {
   const row = db.prepare("SELECT * FROM campaigns WHERE id = ?").get(String(campaignId || ""));
   return campaignRowToJson(row);
@@ -1666,7 +1671,10 @@ function getCampaignById(campaignId) {
 function getActiveCampaignForCreator(creatorId) {
   const row = db.prepare(`
     SELECT * FROM campaigns
-    WHERE creator_id = ? AND status = 'active' AND normalized_video_key NOT LIKE 'legacy:%'
+    WHERE creator_id = ?
+      AND status = 'active'
+      AND normalized_video_key NOT LIKE 'legacy:%'
+      AND normalized_video_key NOT LIKE 'direct:%'
     ORDER BY activated_at DESC
     LIMIT 1
   `).get(creatorId);
@@ -1687,6 +1695,7 @@ function getCampaignsForCreator(creatorId) {
 function getCampaignOptionsForCreator(creatorId, limit = 5) {
   return getCampaignsForCreator(creatorId)
     .filter(campaign => !isLegacyCampaign(campaign))
+    .filter(campaign => !isDirectSupportCampaign(campaign))
     .filter(campaign => campaign.status !== "archived")
     .sort((a, b) => {
       const bTime = new Date(b.activatedAt || b.createdAt || 0).getTime();
@@ -1697,14 +1706,27 @@ function getCampaignOptionsForCreator(creatorId, limit = 5) {
 }
 
 function getDefaultSupportCampaignForCreator(creatorId) {
-  return getCampaignOptionsForCreator(creatorId, 1)[0] || null;
+  return null;
 }
 
 function getSupportCampaignForCreator(creatorId, requestedCampaignId = "") {
   const selectedCampaignId = String(requestedCampaignId || "").trim();
 
+  if (selectedCampaignId === DIRECT_SUPPORT_CAMPAIGN_KEY) {
+    return getOrCreateDirectSupportCampaign(creatorId);
+  }
+
   if (selectedCampaignId) {
     const selectedCampaign = getCampaignById(selectedCampaignId);
+
+    if (
+      selectedCampaign &&
+      selectedCampaign.creatorId === creatorId &&
+      isDirectSupportCampaign(selectedCampaign)
+    ) {
+      return selectedCampaign;
+    }
+
     if (
       selectedCampaign &&
       selectedCampaign.creatorId === creatorId &&
@@ -1715,6 +1737,39 @@ function getSupportCampaignForCreator(creatorId, requestedCampaignId = "") {
   }
 
   return getDefaultSupportCampaignForCreator(creatorId);
+}
+
+function getDirectSupportCampaignId(creatorId) {
+  return `direct_${hashFingerprint(creatorId).slice(0, 18)}`;
+}
+
+function getOrCreateDirectSupportCampaign(creatorId) {
+  const normalizedVideoKey = `direct:${creatorId}`;
+  const getDirectByKey = () => db.prepare(`
+    SELECT * FROM campaigns
+    WHERE creator_id = ? AND normalized_video_key = ?
+    LIMIT 1
+  `).get(creatorId, normalizedVideoKey);
+  const existingDirect = getDirectByKey();
+
+  if (existingDirect) return campaignRowToJson(existingDirect);
+
+  db.prepare(`
+    INSERT INTO campaigns (
+      id, creator_id, title, video_url, normalized_video_key, platform,
+      platform_video_id, thumbnail_url, description, status, created_at
+    )
+    VALUES (?, ?, 'Direct support', ?, ?, 'direct', '', '', 'Supports where no campaign video was selected.', 'inactive', ?)
+    ON CONFLICT(creator_id, normalized_video_key) DO NOTHING
+  `).run(
+    getDirectSupportCampaignId(creatorId),
+    creatorId,
+    normalizedVideoKey,
+    normalizedVideoKey,
+    nowIso()
+  );
+
+  return campaignRowToJson(getDirectByKey());
 }
 
 function getCreatorCampaignTotals(creatorId) {
@@ -2826,6 +2881,9 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
         message: "Campaign not found."
       });
     }
+    const isDirectSupport = isDirectSupportCampaign(campaign);
+    const supportAttributionType = isDirectSupport ? "creator_only" : "selected_video";
+    const selectedVideoId = isDirectSupport ? "" : campaign.id;
 
     if (now - Number(attempt.started_at || 0) < MIN_AD_WATCH_MS) {
       return res.json({
@@ -2936,8 +2994,8 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
       anonId,
       deviceProgressKey,
       sourcePlatform: attempt.source_platform || recordedSourcePlatform,
-      selectedVideoId: campaign.id,
-      attributionType: "selected_video",
+      selectedVideoId,
+      attributionType: supportAttributionType,
       attributedAt: now,
       equippedBadge,
       emoji: "",
@@ -2952,25 +3010,27 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
       anonId: String(anonId || "").trim(),
       deviceProgressKey,
       sourcePlatform: attempt.source_platform || recordedSourcePlatform,
-      selectedVideoId: campaign.id,
-      attributionType: "selected_video",
+      selectedVideoId,
+      attributionType: supportAttributionType,
       completedAt: now,
       attributedAt: now
     };
 
     creatorStats[creatorKey].recentSupports = creatorStats[creatorKey].recentSupports.slice(0, 100);
 
-    if (!creatorStats[creatorKey].videos) {
-      creatorStats[creatorKey].videos = {};
-    }
+    if (!isDirectSupport) {
+      if (!creatorStats[creatorKey].videos) {
+        creatorStats[creatorKey].videos = {};
+      }
 
-    creatorStats[creatorKey].videos[campaign.id] = {
-      videoId: campaign.id,
-      videoTitle: campaign.title,
-      videoThumbnail: campaign.thumbnailUrl,
-      platform: campaign.platform,
-      supports: Number(creatorStats[creatorKey].videos[campaign.id]?.supports || 0) + 1
-    };
+      creatorStats[creatorKey].videos[campaign.id] = {
+        videoId: campaign.id,
+        videoTitle: campaign.title,
+        videoThumbnail: campaign.thumbnailUrl,
+        platform: campaign.platform,
+        supports: Number(creatorStats[creatorKey].videos[campaign.id]?.supports || 0) + 1
+      };
+    }
 
     events.push({
       timestamp: now,
@@ -3298,6 +3358,7 @@ app.get("/api/dashboard/stats", requireCreatorLogin, (req, res) => {
     .sort((a, b) => b.supports - a.supports)
     .slice(0, 5);
   const attributionStats = getVideoAttributionStats(creator);
+  getOrCreateDirectSupportCampaign(creator);
   const campaigns = getCampaignsForCreator(creator);
   const activeCampaign = getDefaultSupportCampaignForCreator(creator);
   const campaignTotals = campaigns.reduce((totals, campaign) => {
@@ -3370,6 +3431,7 @@ app.post(
 
 app.get("/api/dashboard/campaigns", requireCreatorLogin, (req, res) => {
   const creator = getCanonicalCreatorKey(req.session.creatorProfile.slug, req);
+  getOrCreateDirectSupportCampaign(creator);
 
   res.json({
     success: true,

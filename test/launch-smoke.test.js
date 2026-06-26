@@ -81,6 +81,8 @@ test("dashboard shows campaign controls without the recent support feed", () => 
   assert.match(dashboard, /Campaign videos/);
   assert.match(dashboard, /Add videos supporters can choose from when they support/);
   assert.match(dashboard, /Campaign breakdown/);
+  assert.match(dashboard, /function isDirectSupportCampaign/);
+  assert.match(server, /Direct support/);
   assert.match(dashboard, /Add campaign/);
   assert.doesNotMatch(dashboard, /Make active/);
   assert.doesNotMatch(dashboard, /const canActivate = campaign\.status !== "active";/);
@@ -189,6 +191,10 @@ test("campaign duplicate, activation, and support attempt protections are enforc
   assert.match(server, /WHERE creator_id = \?/);
   assert.doesNotMatch(server, /getCampaignSupportCount\(activeCampaign\.id/);
   assert.match(server, /You used your 3 supports for today/);
+  assert.match(server, /const DIRECT_SUPPORT_CAMPAIGN_KEY = "__direct_support__"/);
+  assert.match(server, /function getOrCreateDirectSupportCampaign/);
+  assert.match(server, /return null;\s*\}\s*function getSupportCampaignForCreator/);
+  assert.match(server, /isDirectSupportCampaign/);
 });
 
 test("viewer support completion is assigned automatically to the active campaign", () => {
@@ -199,6 +205,10 @@ test("viewer support completion is assigned automatically to the active campaign
   assert.match(viewer, /campaignId:\s*getSelectedCampaignId\(\)/);
   assert.match(viewer, /supportAttemptId:\s*activeSupportAttemptId/);
   assert.match(viewer, /campaignRemainingSupports <= 0/);
+  assert.match(viewer, /const DIRECT_SUPPORT_CAMPAIGN_KEY = "__direct_support__"/);
+  assert.match(viewer, /function isDirectSupportCampaign/);
+  assert.match(viewer, /getDirectSupportCampaignPlaceholder/);
+  assert.match(viewer, /campaignChoiceWasSkipped \? DIRECT_SUPPORT_CAMPAIGN_KEY/);
   assert.match(viewer, /function snapBackToWellScene/);
   assert.match(viewer, /scene\.scrollIntoView\(\{/);
   assert.match(viewer, /setTimeout\(\(\) => triggerWellGlow\(4500\), wellGlowDelay\)/);

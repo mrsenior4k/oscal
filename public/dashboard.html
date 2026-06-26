@@ -788,11 +788,16 @@ function isLegacyCampaign(campaign) {
   return String(campaign?.normalizedVideoKey || "").startsWith("legacy:");
 }
 
+function isDirectSupportCampaign(campaign) {
+  return String(campaign?.normalizedVideoKey || "").startsWith("direct:");
+}
+
 function renderCampaigns(campaigns = []) {
   campaignsCache = Array.isArray(campaigns) ? campaigns : [];
   const list = document.getElementById("campaignsList");
   const visibleCampaigns = campaignsCache
     .filter(campaign => !isLegacyCampaign(campaign))
+    .filter(campaign => !isDirectSupportCampaign(campaign))
     .filter(campaign => campaign.status !== "archived");
 
   if (!visibleCampaigns.length) {
@@ -825,7 +830,11 @@ function renderCampaignBreakdown(campaigns = []) {
   const visible = (Array.isArray(campaigns) ? campaigns : [])
     .filter(campaign => !isLegacyCampaign(campaign))
     .filter(campaign => campaign.status !== "archived")
-    .sort((a, b) => Number(b.totalSupports || 0) - Number(a.totalSupports || 0));
+    .sort((a, b) => {
+      if (isDirectSupportCampaign(a)) return -1;
+      if (isDirectSupportCampaign(b)) return 1;
+      return Number(b.totalSupports || 0) - Number(a.totalSupports || 0);
+    });
 
   if (!visible.length) {
     list.innerHTML = `<p class="empty">No campaign support yet.</p>`;
