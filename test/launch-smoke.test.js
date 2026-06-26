@@ -184,12 +184,17 @@ test("campaign duplicate, activation, and support attempt protections are enforc
   assert.match(server, /Historical support totals cannot be managed as campaigns/);
   assert.match(server, /SUPPORT_ATTEMPT_ALREADY_USED/);
   assert.match(server, /AD_WATCH_TOO_SHORT/);
+  assert.match(server, /function getCreatorSupportCount/);
+  assert.doesNotMatch(server, /function getCampaignSupportCount/);
+  assert.match(server, /WHERE creator_id = \?/);
+  assert.doesNotMatch(server, /getCampaignSupportCount\(activeCampaign\.id/);
+  assert.match(server, /You used your 3 supports for today/);
 });
 
 test("viewer support completion is assigned automatically to the active campaign", () => {
   assert.match(viewer, /No support video yet/);
-  assert.match(viewer, /You fully supported this video/);
-  assert.match(viewer, /wait 24 hours to support this one again/);
+  assert.match(viewer, /You used your 3 supports for today/);
+  assert.match(viewer, /Come back in 24 hours to support again/);
   assert.match(viewer, /campaignId:\s*activeCampaign\.id/);
   assert.match(viewer, /campaignId:\s*getSelectedCampaignId\(\)/);
   assert.match(viewer, /supportAttemptId:\s*activeSupportAttemptId/);

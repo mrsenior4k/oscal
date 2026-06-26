@@ -1586,7 +1586,7 @@ function campaignErrorPayload(err) {
     CAMPAIGN_ALREADY_ACTIVE: "That campaign is already active.",
     CAMPAIGN_ARCHIVED: "Archived campaigns cannot be used.",
     DUPLICATE_VIDEO_CAMPAIGN: "That video already has a campaign.",
-    CAMPAIGN_SUPPORT_LIMIT_REACHED: "You fully supported this video.",
+    CAMPAIGN_SUPPORT_LIMIT_REACHED: "You used your 3 supports for today.",
     CAMPAIGN_CHANGED: "The active campaign changed. Please start again.",
     INVALID_VIDEO_URL: "Enter a normal HTTP or HTTPS video URL.",
     INVALID_CAMPAIGN_TITLE: "Add a campaign title.",
@@ -1769,7 +1769,7 @@ function getCampaignViewerKeys(req, fingerprint, deviceFamily = "") {
   ].filter(Boolean)));
 }
 
-function getCampaignSupportCount(campaignId, viewerKeys) {
+function getCreatorSupportCount(creatorId, viewerKeys) {
   const keys = Array.isArray(viewerKeys) ? viewerKeys : [viewerKeys];
   const uniqueKeys = Array.from(new Set(keys.filter(Boolean)));
   if (!uniqueKeys.length) return 0;
@@ -1779,10 +1779,10 @@ function getCampaignSupportCount(campaignId, viewerKeys) {
   const row = db.prepare(`
     SELECT COUNT(*) AS count
     FROM campaign_supports
-    WHERE campaign_id = ?
+    WHERE creator_id = ?
       AND completed_at >= ?
       AND viewer_key IN (${placeholders})
-  `).get(campaignId, supportWindowStart, ...uniqueKeys);
+  `).get(creatorId, supportWindowStart, ...uniqueKeys);
 
   return Number(row?.count || 0);
 }
@@ -1804,7 +1804,7 @@ function getCampaignStatusPayload(req, creatorId, fingerprint, requestedCampaign
     };
   }
 
-  const completedSupports = getCampaignSupportCount(activeCampaign.id, viewerKeys);
+  const completedSupports = getCreatorSupportCount(creatorId, viewerKeys);
   const remainingSupports = Math.max(0, MAX_CAMPAIGN_SUPPORTS_PER_VIEWER - completedSupports);
 
   return {
@@ -2743,12 +2743,12 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
       });
     }
 
-    const completedSupports = getCampaignSupportCount(activeCampaign.id, viewerKeys);
+    const completedSupports = getCreatorSupportCount(creatorKey, viewerKeys);
     if (completedSupports >= MAX_CAMPAIGN_SUPPORTS_PER_VIEWER) {
       return res.json({
         success: false,
         code: "CAMPAIGN_SUPPORT_LIMIT_REACHED",
-        message: "You fully supported this video.",
+        message: "You used your 3 supports for today.",
         activeCampaign,
         completedSupports,
         remainingSupports: 0,
@@ -2844,12 +2844,12 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
       });
     }
 
-    const completedBefore = getCampaignSupportCount(campaign.id, viewerKeys);
+    const completedBefore = getCreatorSupportCount(creatorKey, viewerKeys);
     if (completedBefore >= MAX_CAMPAIGN_SUPPORTS_PER_VIEWER) {
       return res.json({
         success: false,
         code: "CAMPAIGN_SUPPORT_LIMIT_REACHED",
-        message: "You fully supported this video.",
+        message: "You used your 3 supports for today.",
         activeCampaign: campaign,
         completedSupports: completedBefore,
         remainingSupports: 0,
@@ -2861,13 +2861,13 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
 
     db.exec("BEGIN IMMEDIATE");
     try {
-      const lockedCompletedBefore = getCampaignSupportCount(campaign.id, viewerKeys);
+      const lockedCompletedBefore = getCreatorSupportCount(creatorKey, viewerKeys);
       if (lockedCompletedBefore >= MAX_CAMPAIGN_SUPPORTS_PER_VIEWER) {
         db.exec("ROLLBACK");
         return res.json({
           success: false,
           code: "CAMPAIGN_SUPPORT_LIMIT_REACHED",
-          message: "You fully supported this video.",
+          message: "You used your 3 supports for today.",
           activeCampaign: campaign,
           completedSupports: lockedCompletedBefore,
           remainingSupports: 0,
@@ -2985,7 +2985,7 @@ app.post('/event', enforceRateLimit("event", 60_000, 24), (req, res) => {
 
     saveData();
 
-    const completedSupports = getCampaignSupportCount(campaign.id, viewerKeys);
+    const completedSupports = getCreatorSupportCount(creatorKey, viewerKeys);
     const remainingSupports = Math.max(0, MAX_CAMPAIGN_SUPPORTS_PER_VIEWER - completedSupports);
     const creatorSupportsForViewer = creatorStats[creatorKey].recentSupports.filter(item =>
       String(item.anonId) === String(anonId)
